@@ -112,3 +112,9 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - Ubuntu 26.04 syncs time with **chrony**, not systemd-timesyncd, so an allow rule for `/usr/sbin/chronyd` was added.
 - OpenSnitch's eBPF modules are a separate package (`opensnitch-ebpf-modules`), now a dependency. Without them the daemon falls back to the slower `/proc` monitor.
 - `curl` was added to the desktop.
+
+## 17. The VM's second display never connected
+- **Symptom:** The VM has two monitors, but the guest only saw `Virtual-1`: `/sys/class/drm/card0-Virtual-2` stayed `disconnected`, and `kscreen-doctor -o` listed one output. `VBoxManage controlvm … setvideomodehint … 1 yes …` changed nothing.
+- **Cause:** Under VMSVGA, the host's monitor layout reaches the guest's `vmwgfx` driver only through **VBoxDRMClient**. Ubuntu ships it in `virtualbox-guest-x11`, which we didn't install, and starts it only from an X11 `Xsession.d` hook, so a Wayland session never gets it. With it running, `setvideomodehint` *still* did nothing. VirtualBox 7's `setscreenlayout` did.
+- **Fix:** `cutefish-hardware` depends on `virtualbox-guest-x11` and ships `cutefish-vbox-drmclient.service`, which runs VBoxDRMClient as root, only under `ConditionVirtualization=oracle`. `scripts/vm.sh displays` sends the layout with `setscreenlayout`. With that, Virtual-2 connected at 1280,0 with its own status bar and no dock, as designed.
+- **Also found:** the D-Bus `current` Space is per *active* output, so it can't show whether Spaces are per display. `scripts/test-spaces.sh` checks per-display Spaces with a KWin script instead (see [multi-display.md](multi-display.md)).

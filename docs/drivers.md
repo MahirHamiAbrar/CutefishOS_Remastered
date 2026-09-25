@@ -22,7 +22,7 @@ Principle: use Ubuntu's stock, signed kernel and firmware (Secure Boot keeps wor
 | Phones (MTP), network shares | `kio-extras`, `gvfs-backends` | |
 | Printers | `cups`, `printer-driver-all`, `system-config-printer-common` | |
 | Firmware updates | `fwupd` | `fwupdmgr update` (LVFS) |
-| Virtual machines | `virtualbox-guest-utils`, `spice-vdagent`, `qemu-guest-agent` | Resize, clipboard, clean shutdown; they do nothing on real hardware |
+| Virtual machines | `virtualbox-guest-utils`, `virtualbox-guest-x11`, `spice-vdagent`, `qemu-guest-agent` | Resize, extra monitors, clipboard, clean shutdown; they do nothing on real hardware. `cutefish-vbox-drmclient.service` runs VBoxDRMClient only inside VirtualBox (`ConditionVirtualization=oracle`) |
 
 ## What we verified
 

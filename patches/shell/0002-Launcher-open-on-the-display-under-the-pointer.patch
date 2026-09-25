@@ -1,0 +1,130 @@
+From 26e32ec0c44f9d85e85ee37aa24ea2ec1cbbef67 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 19:44:38 +0000
+Subject: [PATCH] Launcher: open on the display under the pointer
+
+KWin moves its active output with the pointer and publishes its name
+(org.kde.KWin.activeOutputName), which a Wayland client can't get any
+other way. The launcher moves there before it is shown, keeps the dock
+margin only on the dock's display, and closes if its display goes away.
+---
+ src/launcher/launcher.cpp | 53 +++++++++++++++++++++++++++++++++++++--
+ src/launcher/launcher.h   |  3 +++
+ 2 files changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/src/launcher/launcher.cpp b/src/launcher/launcher.cpp
+index 6e5f04d..4ae58a0 100644
+--- a/src/launcher/launcher.cpp
++++ b/src/launcher/launcher.cpp
+@@ -5,6 +5,9 @@
+ #include "dock/dockwindow.h"
+ #include "statusbar/statusbar.h"
+ 
++#include <QDBusConnection>
++#include <QDBusMessage>
++#include <QDBusReply>
+ #include <QGuiApplication>
+ #include <QPixmapCache>
+ #include <QQmlContext>
+@@ -34,7 +37,8 @@ Launcher::Launcher(QQmlEngine *engine, bool firstShow)
+     setColor(Qt::transparent);
+     setFlags(Qt::FramelessWindowHint);
+ 
+-    // The launcher always covers the primary screen.
++    // Starts on the primary screen; showWindow() moves it to the screen under
++    // the pointer.
+     followPrimaryScreen([this] { updateSize(); });
+ 
+     setSource(QUrl(QStringLiteral("qrc:/launcher/qml/main.qml")));
+@@ -55,6 +59,47 @@ Launcher::Launcher(QQmlEngine *engine, bool firstShow)
+     connect(kwin, &KWinWaylandInterface::clientAdded, this, [this](quint64 address) {
+         focusWaylandWindow(address);
+     });
++
++    // Unplugging the display the launcher is open on: close it rather than let
++    // Qt drop it on another screen at the old size. It reopens on a live one.
++    connect(qGuiApp, &QGuiApplication::screenRemoved, this, [this](QScreen *removed) {
++        if (m_showed && screen() == removed)
++            hideWindow();
++    });
++}
++
++QScreen *Launcher::screenUnderPointer() const
++{
++    // A Wayland client can't read the global pointer position, but KWin moves
++    // its active output with the pointer (and with focus) and publishes the
++    // name, which is the QScreen name. Bounded: a hung KWin must not freeze
++    // the shell, the primary screen is a fine answer.
++    const QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KWin"),
++                                                             QStringLiteral("/KWin"),
++                                                             QStringLiteral("org.kde.KWin"),
++                                                             QStringLiteral("activeOutputName"));
++    const QDBusReply<QString> name = QDBusConnection::sessionBus().call(call, QDBus::Block, 250);
++
++    if (name.isValid()) {
++        for (QScreen *screen : QGuiApplication::screens()) {
++            if (screen->name() == name.value())
++                return screen;
++        }
++    }
++
++    return QGuiApplication::primaryScreen();
++}
++
++void Launcher::moveToScreen(QScreen *target)
++{
++    // Always re-watch, even for the same screen: after a hot-unplug Qt may have
++    // moved the window here without the old screen's watch following it.
++    if (target != screen())
++        setScreen(target);
++
++    watchScreen(target, [this] { updateSize(); });
++    updateSize();
++    updateMargins();
+ }
+ 
+ int Launcher::topMargin() const
+@@ -99,6 +144,9 @@ void Launcher::showWindow()
+     // in one process there is no WM_CLASS left to tell them apart.
+     Activity::self()->setLaunchPad(true);
+ 
++    // Like Launchpad, open on the display the user is looking at.
++    moveToScreen(screenUnderPointer());
++
+     // Let KWin see the panels' new stacking behaviour before the launcher is
+     // mapped, so it never comes up behind them for a frame.
+     KWinWaylandInterface::instance()->roundtrip();
+@@ -208,7 +256,8 @@ void Launcher::updateMargins()
+     m_rightMargin = 0;
+     m_bottomMargin = 0;
+ 
+-    if (m_dock) {
++    // The dock only lives on the primary screen; every screen has a status bar.
++    if (m_dock && m_dock->screen() == screen()) {
+         const QRect dockGeometry = m_dock->primaryGeometry();
+         const int dockDirection = m_dock->direction();
+ 
+diff --git a/src/launcher/launcher.h b/src/launcher/launcher.h
+index 1e06e2f..fcbe55d 100644
+--- a/src/launcher/launcher.h
++++ b/src/launcher/launcher.h
+@@ -6,6 +6,7 @@
+ #include "core/window/shellsurface.h"
+ 
+ class DockWindow;
++class QScreen;
+ 
+ class Launcher : public ShellSurface
+ {
+@@ -74,6 +75,8 @@ protected:
+ 
+ private:
+     void onActiveChanged();
++    QScreen *screenUnderPointer() const;
++    void moveToScreen(QScreen *target);
+     void focusWaylandWindow(quint64 address = 0);
+ 
+ private:
+-- 
+2.43.0
+

@@ -54,8 +54,9 @@ Depends: ${misc:Depends},
          usbutils, pciutils,
 # Printing and scanning basics
          cups, printer-driver-all, system-config-printer-common,
-# VirtualBox/QEMU guests (harmless on real hardware)
-         virtualbox-guest-utils, spice-vdagent, qemu-guest-agent
+# VirtualBox/QEMU guests (harmless on real hardware). virtualbox-guest-x11
+# only for VBoxDRMClient (extra monitors and resize under VMSVGA).
+         virtualbox-guest-utils, virtualbox-guest-x11, spice-vdagent, qemu-guest-agent
 Description: Drivers and hardware support for Cutefish
  Stock Ubuntu kernel and firmware, Mesa graphics and video acceleration,
  NetworkManager (Wi-Fi, hotspot, mobile broadband), BlueZ, laptop power

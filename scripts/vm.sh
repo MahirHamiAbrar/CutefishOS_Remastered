@@ -9,6 +9,7 @@
 #   scripts/vm.sh shot   [efi|bios] NAME   save screenshots of both displays to build/vm/shots/
 #   scripts/vm.sh type   [efi|bios] TEXT   type TEXT into the VM
 #   scripts/vm.sh run    [efi|bios] CMD... run a command in the guest as the live user (guest additions)
+#   scripts/vm.sh displays [efi|bios] N [WxH]  turn on N displays side by side (default 2, 1280x800)
 #   scripts/vm.sh stop   [efi|bios]
 #   scripts/vm.sh destroy [efi|bios]
 set -euo pipefail
@@ -63,6 +64,22 @@ shot)
         VBoxManage controlvm "$VM" screenshotpng "$DIR/shots/$VM-$name-display$d.png" $d 2>/dev/null \
             && echo "$DIR/shots/$VM-$name-display$d.png"
     done
+    ;;
+displays)
+    # The VM has two monitors, but the guest only sees the second one after the
+    # host sends a layout for it. setvideomodehint does nothing under VMSVGA;
+    # setscreenlayout does, through VBoxDRMClient in the guest
+    # (cutefish-vbox-drmclient.service). See docs/setbacks.md.
+    n=${1:-2} size=${2:-1280x800}
+    w=${size%x*} h=${size#*x}
+    layout=()
+    for (( d = 0; d < 2; d++ )); do
+        if (( d == 0 )); then layout+=(0 primary 0 0 "$w" "$h" 32)
+        elif (( d < n )); then layout+=("$d" on $(( d * w )) 0 "$w" "$h" 32)
+        else layout+=("$d" off)
+        fi
+    done
+    VBoxManage controlvm "$VM" setscreenlayout "${layout[@]}"
     ;;
 type)    VBoxManage controlvm "$VM" keyboardputstring "$*" ;;
 run)     VBoxManage guestcontrol "$VM" run --username cutefish --password "" --wait-stdout --wait-stderr -- "$@" ;;

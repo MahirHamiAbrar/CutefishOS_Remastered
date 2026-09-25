@@ -11,6 +11,7 @@ Goal: macOS's "Displays have separate Spaces". Each monitor switches its own wor
 | The app menu appears on the display that holds the active window | `AppMenuModel.activeWindowGeometry` + `activeWindowOnThisScreen` in the status bar QML |
 | System tray and the notification-centre shortcut on the main display only | Tray items can register with only one watcher; the D-Bus names are owned once |
 | Dock on the main display | unchanged upstream behaviour |
+| Launcher opens on the display under the pointer | Asks KWin for its active output (`org.kde.KWin.activeOutputName`), which follows the pointer |
 | Mission Control | KWin Overview effect, **Meta+W** (per-display after the backport) |
 | Switch Space on the display under the pointer | **Meta+Ctrl+←/→**; move a window with **Meta+Ctrl+Shift+←/→** |
 | Turn it off | Settings → Display → *Displays have separate Spaces* (only shown with 2+ displays) |
@@ -50,3 +51,17 @@ When Ubuntu or Kubuntu ship KWin ≥ 6.7, drop these patches (keep the blur one)
 - `src/shell/src/core/services/screenhelper.*` and `statusbar/statusbarforegroundhelper.*`: `targetScreen` property, so each bar samples its own wallpaper strip and uses its own work area.
 - `src/shell/src/core/wayland/kwinwaylandinterface.*`: window geometry from the Plasma window-management protocol.
 - `src/shell/src/statusbar/qml/main.qml`: tray only on the primary bar; app menu only where the active window is.
+- `src/shell/src/launcher/launcher.cpp` (`patches/shell/0002-*`): before showing, the launcher moves to the screen KWin reports as active, keeps the dock margin only on the dock's screen, and closes if its screen is unplugged. A Wayland client can't read the global pointer position; KWin moves its active output with every pointer motion.
+
+## Testing it
+
+KWin's D-Bus `VirtualDesktopManager.current` is the Space on the **active** output, so it reads the same whether Spaces are per display or global, and can't be used as a check. `scripts/test-spaces.sh` loads a KWin script instead. The script switches only the second display (`workspace.setCurrentDesktopForScreen`) and checks that the first display kept its Space:
+
+```sh
+scripts/vm.sh start efi
+scripts/test-spaces.sh efi   # PASS Virtual-1: Desktop 1 -> Desktop 1, Virtual-2: Desktop 1 -> Desktop 2
+```
+
+The result comes back as the name of the first Space, since that's the only string a script can publish on D-Bus. The name is restored afterwards. Screenshots of both displays go to `build/vm/shots/*-spaces-test-*`. With `PerOutputVirtualDesktops=false` the same test reports FAIL, because both displays switch.
+
+The VM's second monitor appears only when the host sends a layout (`scripts/vm.sh displays efi 2`), and only if `VBoxDRMClient` runs in the guest. See [setbacks.md](setbacks.md) §17.
