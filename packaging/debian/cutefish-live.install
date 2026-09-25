@@ -1,0 +1,2 @@
+files/live/16cutefish_autologin usr/share/initramfs-tools/scripts/casper-bottom
+files/live/cutefish-live-installer.desktop etc/xdg/autostart

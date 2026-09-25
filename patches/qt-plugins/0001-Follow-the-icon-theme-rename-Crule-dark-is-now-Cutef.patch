@@ -1,0 +1,81 @@
+From dc5aa76972c53f42574624399bc231c98d5c1acd Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sat, 26 Sep 2026 01:05:23 +0600
+Subject: [PATCH] Follow the icon theme rename: Crule(-dark) is now
+ Cutefish-Light/-Dark
+
+---
+ debian/changelog               |  6 ++++++
+ platformtheme/hintsettings.cpp | 19 +++++++++++++------
+ 2 files changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index bdd660e..0e4eaab 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-qt-plugins (0.6+remastered1) resolute; urgency=medium
++
++  * Follow the icon theme rename: Crule(-dark) is now Cutefish-Light/-Dark
++
++ -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 01:05:23 +0600
++
+ cutefish-qt-plugins (0.6) UNRELEASED; urgency=high
+ 
+   * Initial release (CutefishOS)  <support@cutefishos.com>
+diff --git a/platformtheme/hintsettings.cpp b/platformtheme/hintsettings.cpp
+index cd45eca..6f09b22 100644
+--- a/platformtheme/hintsettings.cpp
++++ b/platformtheme/hintsettings.cpp
+@@ -25,8 +25,8 @@ static const QByteArray s_systemFontName = QByteArrayLiteral("Font");
+ static const QByteArray s_systemFixedFontName = QByteArrayLiteral("FixedFont");
+ static const QByteArray s_systemPointFontSize = QByteArrayLiteral("FontSize");
+ static const QByteArray s_darkModeName = QByteArrayLiteral("DarkMode");
+-static const QByteArray s_lightIconName = QByteArrayLiteral("Crule");
+-static const QByteArray s_darkIconName = QByteArrayLiteral("Crule-dark");
++static const QByteArray s_lightIconName = QByteArrayLiteral("Cutefish-Light");
++static const QByteArray s_darkIconName = QByteArrayLiteral("Cutefish-Dark");
+ 
+ static QString availableFontFamily(const QString &requested, const QString &fallback)
+ {
+@@ -41,13 +41,20 @@ static QString availableFontFamily(const QString &requested, const QString &fall
+     return QStringLiteral("Sans Serif");
+ }
+ 
++// The icon theme was renamed from Crule(-dark) to Cutefish(-Light/-Dark) in
++// cutefishos/icons a18c8f33; both names mean "switch with dark mode".
++static bool followsDarkMode(const QString &iconTheme)
++{
++    return iconTheme.contains(QLatin1String("Crule")) || iconTheme == QLatin1String("Cutefish");
++}
++
+ HintsSettings::HintsSettings(QObject *parent)
+     : QObject(parent),
+       m_settings(new QSettings(QSettings::UserScope, "cutefishos", "theme"))
+ {
+-    m_iconTheme = m_settings->value("IconTheme", "Crule").toString();
++    m_iconTheme = m_settings->value("IconTheme", "Cutefish").toString();
+ 
+-    if (m_iconTheme.contains("Crule"))
++    if (followsDarkMode(m_iconTheme))
+         m_hints[QPlatformTheme::SystemIconThemeName] = darkMode() ? s_darkIconName : s_lightIconName;
+     else
+         m_hints[QPlatformTheme::SystemIconThemeName] = m_iconTheme;
+@@ -138,12 +145,12 @@ void HintsSettings::onFileChanged(const QString &path)
+                 emit darkModeChanged(newValue.toBool());
+                 // Need to update the icon to dark
+ 
+-                if (m_iconTheme.contains("Crule"))
++                if (followsDarkMode(m_iconTheme))
+                     m_hints[QPlatformTheme::SystemIconThemeName] = darkMode() ? s_darkIconName : s_lightIconName;
+ 
+                 emit iconThemeChanged();
+             } else if (value == "IconTheme") {
+-                if (!m_iconTheme.contains("Crule")) {
++                if (!followsDarkMode(m_iconTheme)) {
+                     m_iconTheme = newValue.toString();
+                     m_hints[QPlatformTheme::SystemIconThemeName] = m_iconTheme;
+                 }
+-- 
+2.43.0
+

@@ -1,0 +1,69 @@
+From 828123411d3f2d670cfcddb038808776b779f9a2 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:32 +0600
+Subject: [PATCH] Cutefish Remastered: cutefish-framework changes
+
+- Hotspot: store the PSK in NetworkManager, report activation failures
+---
+ debian/changelog    |  6 ++++++
+ network/handler.cpp | 16 +++++++++++++---
+ 2 files changed, 19 insertions(+), 3 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index e7d3fc2..63176a9 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++libcutefish (0.7+remastered1) resolute; urgency=medium
++
++  * Hotspot: store the PSK in NetworkManager, report activation failures
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 22:14:14 +0600
++
+ libcutefish (0.7) UNRELEASED; urgency=high
+ 
+   * Initial release (CutefishOS)  <support@cutefishos.com>
+diff --git a/network/handler.cpp b/network/handler.cpp
+index c5d3709..6885322 100644
+--- a/network/handler.cpp
++++ b/network/handler.cpp
+@@ -573,7 +573,11 @@ void Handler::createHotspot()
+             // Use WPA2
+             wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::WpaPsk);
+             wifiSecurity->setPsk(Configuration::self().hotspotPassword());
+-            wifiSecurity->setPskFlags(NetworkManager::Setting::AgentOwned);
++            // Stored by NetworkManager itself: an agent-owned secret is stripped
++            // from the request and asked back from a secret agent, and without
++            // one activation fails with "no secrets". The connection is
++            // volatile anyway.
++            wifiSecurity->setPskFlags(NetworkManager::Setting::None);
+         } else {
+             // Use WEP
+             wifiSecurity->setKeyMgmt(NetworkManager::WirelessSecuritySetting::Wep);
+@@ -807,7 +811,13 @@ void Handler::hotspotCreated(QDBusPendingCallWatcher *watcher)
+ {
+     QDBusPendingReply<QDBusObjectPath, QDBusObjectPath, QVariantMap> reply = *watcher;
+ 
+-    if (!reply.isError() && reply.isValid()) {
++    if (reply.isError()) {
++        qWarning() << "Failed to create hotspot:" << reply.error().message();
++        Q_EMIT hotspotDisabled();
++        return;
++    }
++
++    if (reply.isValid()) {
+         const QString activeConnectionPath = reply.argumentAt(1).value<QDBusObjectPath>().path();
+ 
+         if (activeConnectionPath.isEmpty()) {
+@@ -822,7 +832,7 @@ void Handler::hotspotCreated(QDBusPendingCallWatcher *watcher)
+             return;
+         }
+ 
+-        connect(hotspot.data(), &NetworkManager::ActiveConnection::stateChanged, [=] (NetworkManager::ActiveConnection::State state) {
++        connect(hotspot.data(), &NetworkManager::ActiveConnection::stateChanged, this, [=] (NetworkManager::ActiveConnection::State state) {
+             if (state > NetworkManager::ActiveConnection::Activated) {
+                 Configuration::self().setHotspotConnectionPath(QString());
+                 Q_EMIT hotspotDisabled();
+-- 
+2.43.0
+

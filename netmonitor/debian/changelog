@@ -1,0 +1,5 @@
+cutefish-netmonitor (0.1) resolute; urgency=medium
+
+  * Initial release: native OpenSnitch UI, inbound firewall.
+
+ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:48:19 +0600

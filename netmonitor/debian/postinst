@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = configure ]; then
+    # Seed OpenSnitch with allow rules for system services so the first boot is
+    # not a storm of prompts. Existing files (user edits) are left alone.
+    mkdir -p /etc/opensnitchd/rules
+    for rule in /usr/share/cutefish-netmonitor/opensnitch-rules/*.json; do
+        target=/etc/opensnitchd/rules/$(basename "$rule")
+        [ -e "$target" ] || cp "$rule" "$target"
+    done
+fi
+
+#DEBHELPER#

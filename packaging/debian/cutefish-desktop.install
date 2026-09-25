@@ -1,0 +1,4 @@
+files/keyrings/packages.mozilla.org.asc usr/share/keyrings
+files/apt/mozilla.sources usr/share/cutefish-desktop
+files/apt/mozilla.pref usr/share/cutefish-desktop
+files/sddm/10-cutefish-wayland.conf etc/sddm.conf.d

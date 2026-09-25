@@ -1,0 +1,71 @@
+From 07ba079a2d9a0959bf3f60370a9ae6cbf9adb03e Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:32 +0600
+Subject: [PATCH 1/2] Cutefish Remastered: core changes
+
+- Session: export GTK_MODULES=appmenu-gtk-module for the global menu
+---
+ cutefish-services/appearance/thememanager.cpp | 2 +-
+ debian/changelog                              | 6 ++++++
+ debian/control                                | 1 -
+ session/cutefish-wayland-session              | 5 +++++
+ 4 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/cutefish-services/appearance/thememanager.cpp b/cutefish-services/appearance/thememanager.cpp
+index 71d7a7a..813c39a 100644
+--- a/cutefish-services/appearance/thememanager.cpp
++++ b/cutefish-services/appearance/thememanager.cpp
+@@ -75,7 +75,7 @@ ThemeManager::ThemeManager(QObject *parent)
+     m_backgroundColor = m_settings->value("BackgroundColor", "#2B8ADA").toString();
+     m_cursorTheme = m_settings->value("CursorTheme", "default").toString();
+     m_cursorSize = m_settings->value("CursorSize", 24).toInt();
+-    m_iconTheme = m_settings->value("IconTheme", "Crule").toString();
++    m_iconTheme = m_settings->value("IconTheme", "Cutefish").toString();
+ 
+     // Synchronize toolkit and compositor cursor settings at session startup.
+     applyCursorSettings();
+diff --git a/debian/changelog b/debian/changelog
+index 8ba3120..1d04bf2 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-core (0.8+remastered1) resolute; urgency=medium
++
++  * Session: export GTK_MODULES=appmenu-gtk-module for the global menu
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:43:58 +0600
++
+ cutefish-core (0.8) UNRELEASED; urgency=high
+ 
+   * Initial release (CutefishOS)  <cutefishos@foxmail.com>
+diff --git a/debian/control b/debian/control
+index 3a9b987..daa23dd 100644
+--- a/debian/control
++++ b/debian/control
+@@ -34,7 +34,6 @@ Depends: accountsservice,
+          fishui,
+          libcutefish,
+          libkscreen-bin,
+-         appmenu-gtk2-module,
+          appmenu-gtk3-module,
+          ${misc:Depends},
+          ${shlibs:Depends}
+diff --git a/session/cutefish-wayland-session b/session/cutefish-wayland-session
+index d549e9a..a6d4768 100755
+--- a/session/cutefish-wayland-session
++++ b/session/cutefish-wayland-session
+@@ -14,6 +14,11 @@ export XDG_CURRENT_DESKTOP=Cutefish
+ export XDG_SESSION_DESKTOP=Cutefish
+ export DESKTOP_SESSION=Cutefish
+ 
++# GTK 3 applications publish their menus to the Cutefish global menu through
++# appmenu-gtk-module (package appmenu-gtk3-module). Qt applications do it
++# through the cutefish platform theme, picked from XDG_CURRENT_DESKTOP.
++export GTK_MODULES="${GTK_MODULES:+$GTK_MODULES:}appmenu-gtk-module"
++
+ # Keep Xwayland available for legacy X11 session agents such as
+ # spice-vdagent. The agent uses X11 selections and cannot connect to the
+ # native Wayland display directly; KWin bridges the Xwayland clipboard into
+-- 
+2.43.0
+

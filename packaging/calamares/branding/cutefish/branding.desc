@@ -1,0 +1,24 @@
+---
+componentName: cutefish
+windowExpanding:    normal
+windowSize: 1024px,660px
+strings:
+    productName:         Cutefish OS
+    shortProductName:    Cutefish
+    version:             26.04
+    shortVersion:        resolute
+    versionedName:       Cutefish OS
+    shortVersionedName:  Cutefish OS 26.04
+    bootloaderEntryName: Cutefish
+    productUrl:          https://github.com/cutefishos
+    supportUrl:          https://github.com/cutefishos
+images:
+    productLogo:         "logo.png"
+    productIcon:         "icon.png"
+    productWelcome:      "welcome.png"
+slideshow:               "show.qml"
+slideshowAPI:            1
+style:
+   SidebarBackground:    "#1E1E1E"
+   SidebarText:          "#FFFFFF"
+   SidebarTextCurrent:   "#3385FF"

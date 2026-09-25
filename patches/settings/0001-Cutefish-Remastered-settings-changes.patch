@@ -1,0 +1,1051 @@
+From 6640be0d4a1ea531211a4d8225660a759a69d450 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:32 +0600
+Subject: [PATCH] Cutefish Remastered: settings changes
+
+- Drop the window blur now provided by FishUI.Window
+- Blur strength, per-app forced blur and separate Spaces per display
+- Network Monitor page; re-enable Hotspot page with password validation and live state
+---
+ CMakeLists.txt              |   2 +
+ debian/changelog            |  18 +++
+ src/application.cpp         |   4 +
+ src/netmonitorclient.cpp    |  90 +++++++++++++++
+ src/netmonitorclient.h      |  62 ++++++++++
+ src/qml/Appearance/Main.qml |  93 +++++++++++++++
+ src/qml/Display/Main.qml    |  36 ++++++
+ src/qml/Hotspot/Main.qml    |  39 ++++++-
+ src/qml/NetMonitor/Main.qml | 223 ++++++++++++++++++++++++++++++++++++
+ src/qml/SideBar.qml         |  25 ++--
+ src/qml/main.qml            |   6 -
+ src/resources.qrc           |   1 +
+ src/windoweffects.cpp       | 198 ++++++++++++++++++++++++++++++++
+ src/windoweffects.h         |  54 +++++++++
+ 14 files changed, 836 insertions(+), 15 deletions(-)
+ create mode 100644 src/netmonitorclient.cpp
+ create mode 100644 src/netmonitorclient.h
+ create mode 100644 src/qml/NetMonitor/Main.qml
+ create mode 100644 src/windoweffects.cpp
+ create mode 100644 src/windoweffects.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2963313..09137d7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -64,6 +64,8 @@ set(SRCS
+     src/vpn/nm-pptp-service.h
+     src/networkproxy.cpp
+     src/defaultapplications.cpp
++    src/windoweffects.cpp
++    src/netmonitorclient.cpp
+ #    src/update/updatemodel.cpp
+ )
+ 
+diff --git a/debian/changelog b/debian/changelog
+index 661361d..cf76950 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,21 @@
++cutefish-settings (0.8+remastered3) resolute; urgency=medium
++
++  * Network Monitor page; re-enable Hotspot page with password validation and live state
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:50:49 +0600
++
++cutefish-settings (0.8+remastered2) resolute; urgency=medium
++
++  * Blur strength, per-app forced blur and separate Spaces per display
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:43:24 +0600
++
++cutefish-settings (0.8+remastered1) resolute; urgency=medium
++
++  * Drop the window blur now provided by FishUI.Window
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:38:17 +0600
++
+ cutefish-settings (0.8) UNRELEASED; urgency=high
+ 
+   * Update <support@cutefishos.com>
+diff --git a/src/application.cpp b/src/application.cpp
+index 6b6859c..f1c17e4 100644
+--- a/src/application.cpp
++++ b/src/application.cpp
+@@ -20,6 +20,8 @@
+ #include "networkproxy.h"
+ #include "notifications.h"
+ #include "defaultapplications.h"
++#include "windoweffects.h"
++#include "netmonitorclient.h"
+ #include "applicationregistry.h"
+ 
+ #include "cursor/cursorthememodel.h"
+@@ -83,6 +85,8 @@ Application::Application(int &argc, char **argv)
+     qmlRegisterType<NetworkProxy>(uri, 1, 0, "NetworkProxy");
+     qmlRegisterType<Notifications>(uri, 1, 0, "Notifications");
+     qmlRegisterType<DefaultApplications>(uri, 1, 0, "DefaultApplications");
++    qmlRegisterType<WindowEffects>(uri, 1, 0, "WindowEffects");
++    qmlRegisterType<NetMonitorClient>(uri, 1, 0, "NetMonitorClient");
+ 
+     qmlRegisterSingletonType<Password>(uri, 1, 0, "Password", passwordSingleton);
+ 
+diff --git a/src/netmonitorclient.cpp b/src/netmonitorclient.cpp
+new file mode 100644
+index 0000000..223ef9c
+--- /dev/null
++++ b/src/netmonitorclient.cpp
+@@ -0,0 +1,90 @@
++/*
++ * Cutefish Remastered: Settings side of the network monitor.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++#include "netmonitorclient.h"
++
++#include <QDBusConnection>
++#include <QDBusMessage>
++#include <QJsonDocument>
++#include <QProcess>
++#include <QRegularExpression>
++
++NetMonitorClient::NetMonitorClient(QObject *parent)
++    : QObject(parent)
++{
++}
++
++QVariant NetMonitorClient::call(const QString &method, const QVariantList &args) const
++{
++    QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("com.cutefish.NetMonitor"),
++                                                      QStringLiteral("/NetMonitor"),
++                                                      QStringLiteral("com.cutefish.NetMonitor"), method);
++    msg.setArguments(args);
++    const QDBusMessage reply = QDBusConnection::sessionBus().call(msg, QDBus::Block, 2000);
++    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
++        return {};
++    return reply.arguments().constFirst();
++}
++
++void NetMonitorClient::refresh()
++{
++    const QVariant connected = call(QStringLiteral("DaemonConnected"));
++    m_available = connected.isValid();
++    m_daemonConnected = connected.toBool();
++    m_interception = call(QStringLiteral("InterceptionEnabled")).toBool();
++    m_stats = QJsonDocument::fromJson(call(QStringLiteral("Stats")).toString().toUtf8()).toVariant().toMap();
++    m_connections = QJsonDocument::fromJson(call(QStringLiteral("Connections"), {300}).toString().toUtf8()).toVariant().toList();
++    m_rules = QJsonDocument::fromJson(call(QStringLiteral("Rules")).toString().toUtf8()).toVariant().toList();
++    emit changed();
++}
++
++void NetMonitorClient::refreshInbound()
++{
++    // Kernel log lines from the "cutefish-in: " nftables rule, e.g.
++    // "... cutefish-in: IN=wlp2s0 OUT= MAC=... SRC=1.2.3.4 DST=... PROTO=TCP SPT=1 DPT=22 ..."
++    QProcess journal;
++    journal.start(QStringLiteral("journalctl"),
++                  {QStringLiteral("-k"), QStringLiteral("--grep=cutefish-in:"), QStringLiteral("-n"),
++                   QStringLiteral("200"), QStringLiteral("-o"), QStringLiteral("short-iso"),
++                   QStringLiteral("--no-pager"), QStringLiteral("-r")});
++    journal.waitForFinished(3000);
++
++    static const QRegularExpression field(QStringLiteral("(IN|SRC|DST|PROTO|DPT)=(\\S*)"));
++    m_inbound.clear();
++    const QStringList lines = QString::fromUtf8(journal.readAllStandardOutput()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
++    for (const QString &line : lines) {
++        if (!line.contains(QLatin1String("cutefish-in:")))
++            continue;
++        QVariantMap entry{{"time", line.section(QLatin1Char(' '), 0, 0)}};
++        for (auto it = field.globalMatch(line); it.hasNext();) {
++            const auto m = it.next();
++            entry.insert(m.captured(1).toLower(), m.captured(2));
++        }
++        m_inbound << entry;
++    }
++    emit inboundChanged();
++}
++
++void NetMonitorClient::deleteRule(const QString &name)
++{
++    call(QStringLiteral("DeleteRule"), {name});
++    refresh();
++}
++
++void NetMonitorClient::setRuleAction(const QString &name, const QString &action)
++{
++    call(QStringLiteral("SetRuleAction"), {name, action});
++    refresh();
++}
++
++void NetMonitorClient::setInterception(bool enabled)
++{
++    call(QStringLiteral("SetInterception"), {enabled});
++    refresh();
++}
+diff --git a/src/netmonitorclient.h b/src/netmonitorclient.h
+new file mode 100644
+index 0000000..5bb9534
+--- /dev/null
++++ b/src/netmonitorclient.h
+@@ -0,0 +1,62 @@
++/*
++ * Cutefish Remastered: Settings side of the network monitor. Reads what
++ * cutefish-netmonitor publishes on D-Bus and the inbound firewall's log.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++#ifndef NETMONITORCLIENT_H
++#define NETMONITORCLIENT_H
++
++#include <QObject>
++#include <QVariantList>
++#include <QVariantMap>
++
++class NetMonitorClient : public QObject
++{
++    Q_OBJECT
++    Q_PROPERTY(bool available READ available NOTIFY changed)
++    Q_PROPERTY(bool daemonConnected READ daemonConnected NOTIFY changed)
++    Q_PROPERTY(bool interception READ interception NOTIFY changed)
++    Q_PROPERTY(QVariantMap stats READ stats NOTIFY changed)
++    Q_PROPERTY(QVariantList connections READ connections NOTIFY changed)
++    Q_PROPERTY(QVariantList rules READ rules NOTIFY changed)
++    Q_PROPERTY(QVariantList inbound READ inbound NOTIFY inboundChanged)
++
++public:
++    explicit NetMonitorClient(QObject *parent = nullptr);
++
++    bool available() const { return m_available; }
++    bool daemonConnected() const { return m_daemonConnected; }
++    bool interception() const { return m_interception; }
++    QVariantMap stats() const { return m_stats; }
++    QVariantList connections() const { return m_connections; }
++    QVariantList rules() const { return m_rules; }
++    QVariantList inbound() const { return m_inbound; }
++
++    Q_INVOKABLE void refresh();
++    Q_INVOKABLE void refreshInbound();
++    Q_INVOKABLE void deleteRule(const QString &name);
++    Q_INVOKABLE void setRuleAction(const QString &name, const QString &action);
++    Q_INVOKABLE void setInterception(bool enabled);
++
++signals:
++    void changed();
++    void inboundChanged();
++
++private:
++    QVariant call(const QString &method, const QVariantList &args = {}) const;
++
++    bool m_available = false;
++    bool m_daemonConnected = false;
++    bool m_interception = true;
++    QVariantMap m_stats;
++    QVariantList m_connections;
++    QVariantList m_rules;
++    QVariantList m_inbound;
++};
++
++#endif // NETMONITORCLIENT_H
+diff --git a/src/qml/Appearance/Main.qml b/src/qml/Appearance/Main.qml
+index 545a317..8fa0b00 100644
+--- a/src/qml/Appearance/Main.qml
++++ b/src/qml/Appearance/Main.qml
+@@ -30,6 +30,10 @@ import "../"
+ ItemPage {
+     headerTitle: qsTr("Appearance")
+ 
++    WindowEffects {
++        id: windowEffects
++    }
++
+     FrameworkAppearance.Appearance {
+         id: appearance
+     }
+@@ -153,6 +157,95 @@ ItemPage {
+                 }
+             }
+ 
++            // Cutefish Remastered: blur strength and apps blurred as a whole.
++            RoundedItem {
++                visible: appearance.blurEnabled
++
++                Label {
++                    text: qsTr("Blur")
++                    color: FishUI.Theme.disabledTextColor
++                }
++
++                RowLayout {
++                    spacing: FishUI.Units.largeSpacing
++
++                    Label {
++                        text: qsTr("Strength")
++                    }
++
++                    Slider {
++                        id: blurStrengthSlider
++                        Layout.fillWidth: true
++                        from: 1
++                        to: 15
++                        stepSize: 1
++                        snapMode: Slider.SnapAlways
++                        value: windowEffects.blurStrength
++                        onPressedChanged: {
++                            if (!pressed)
++                                windowEffects.blurStrength = value
++                        }
++                    }
++                }
++
++                HorizontalDivider {}
++
++                Label {
++                    text: qsTr("Always blur these apps")
++                }
++
++                Label {
++                    text: qsTr("Their windows become slightly translucent with the desktop blurred behind them.")
++                    color: FishUI.Theme.disabledTextColor
++                    wrapMode: Text.WordWrap
++                    Layout.fillWidth: true
++                }
++
++                Repeater {
++                    model: windowEffects.forcedApps
++
++                    RowLayout {
++                        Layout.fillWidth: true
++                        spacing: FishUI.Units.largeSpacing
++
++                        Image {
++                            width: 24
++                            height: 24
++                            sourceSize: Qt.size(24, 24)
++                            source: "image://icontheme/" + modelData.icon
++                        }
++
++                        Label {
++                            text: modelData.name
++                            Layout.fillWidth: true
++                            elide: Text.ElideRight
++                        }
++
++                        Button {
++                            text: qsTr("Remove")
++                            onClicked: windowEffects.removeForcedApp(modelData.windowClass)
++                        }
++                    }
++                }
++
++                RowLayout {
++                    spacing: FishUI.Units.largeSpacing
++
++                    ComboBox {
++                        id: blurAppCombo
++                        Layout.fillWidth: true
++                        model: windowEffects.availableApps
++                        textRole: "name"
++                    }
++
++                    Button {
++                        text: qsTr("Add")
++                        enabled: blurAppCombo.currentIndex >= 0
++                        onClicked: windowEffects.addForcedApp(windowEffects.availableApps[blurAppCombo.currentIndex].windowClass)
++                    }
++                }
++            }
++
+             RoundedItem {
+                 Label {
+                     text: qsTr("Accent color")
+diff --git a/src/qml/Display/Main.qml b/src/qml/Display/Main.qml
+index 7aa0e81..45606eb 100644
+--- a/src/qml/Display/Main.qml
++++ b/src/qml/Display/Main.qml
+@@ -360,9 +360,45 @@ ItemPage {
+                 }
+             }
+ 
++            // Cutefish Remastered: macOS "Displays have separate Spaces".
++            RoundedItem {
++                visible: _screenView.count > 1
++
++                RowLayout {
++                    spacing: FishUI.Units.largeSpacing
++
++                    ColumnLayout {
++                        Layout.fillWidth: true
++                        spacing: 0
++
++                        Label {
++                            text: qsTr("Displays have separate Spaces")
++                        }
++
++                        Label {
++                            text: qsTr("Switch workspaces on each display independently.")
++                            color: FishUI.Theme.disabledTextColor
++                            wrapMode: Text.WordWrap
++                            Layout.fillWidth: true
++                        }
++                    }
++
++                    Switch {
++                        checked: windowEffects.separateSpaces
++                        Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
++                        onClicked: windowEffects.separateSpaces = checked
++                        rightPadding: 0
++                    }
++                }
++            }
++
+             Item {
+                 Layout.fillHeight: true
+             }
+         }
+     }
++
++    WindowEffects {
++        id: windowEffects
++    }
+ }
+diff --git a/src/qml/Hotspot/Main.qml b/src/qml/Hotspot/Main.qml
+index bc7cb1d..2d37b08 100644
+--- a/src/qml/Hotspot/Main.qml
++++ b/src/qml/Hotspot/Main.qml
+@@ -42,6 +42,16 @@ ItemPage {
+         id: configuration
+     }
+ 
++    // WPA2 needs 8-63 characters; an empty password makes an open hotspot.
++    readonly property bool passwordValid: hotspotPassword.text.length === 0
++                                          || (hotspotPassword.text.length >= 8 && hotspotPassword.text.length <= 63)
++
++    Connections {
++        target: handler
++        function onHotspotCreated() { _switch.checked = true }
++        function onHotspotDisabled() { _switch.checked = false }
++    }
++
+     Label {
+         anchors.centerIn: parent
+         text: qsTr("Not supported")
+@@ -78,6 +88,8 @@ ItemPage {
+                         id: _switch
+                         Layout.fillHeight: true
+                         rightPadding: 0
++                        checked: configuration.hotspotConnectionPath !== ""
++                        enabled: control.passwordValid && ssidName.text.length > 0
+ 
+                         onToggled: {
+                             if (checked) {
+@@ -115,10 +127,34 @@ ItemPage {
+ 
+                     TextField {
+                         id: hotspotPassword
+-                        // placeholderText: qsTr("Password")
++                        placeholderText: qsTr("At least 8 characters")
+                         text: configuration.hotspotPassword
++                        echoMode: _showPassword.checked ? TextInput.Normal : TextInput.Password
+                         Layout.fillWidth: true
+                     }
++
++                    Item { width: 1; height: 1 }
++
++                    CheckBox {
++                        id: _showPassword
++                        text: qsTr("Show password")
++                    }
++
++                    Item { width: 1; height: 1; visible: !control.passwordValid }
++
++                    Label {
++                        visible: !control.passwordValid
++                        text: qsTr("The password must be 8 to 63 characters long.")
++                        color: FishUI.Theme.redColor
++                    }
++
++                    Item { width: 1; height: 1; visible: hotspotPassword.text.length === 0 }
++
++                    Label {
++                        visible: hotspotPassword.text.length === 0
++                        text: qsTr("Without a password anyone nearby can join.")
++                        color: FishUI.Theme.disabledTextColor
++                    }
+                 }
+ 
+                 Item {
+@@ -127,6 +163,7 @@ ItemPage {
+ 
+                 Button {
+                     text: qsTr("Save")
++                    enabled: control.passwordValid && ssidName.text.length > 0
+                     Layout.alignment: Qt.AlignRight
+                     onClicked: {
+                         configuration.hotspotName = ssidName.text
+diff --git a/src/qml/NetMonitor/Main.qml b/src/qml/NetMonitor/Main.qml
+new file mode 100644
+index 0000000..8e80e0e
+--- /dev/null
++++ b/src/qml/NetMonitor/Main.qml
+@@ -0,0 +1,223 @@
++/*
++ * Cutefish Remastered: Settings > Network Monitor.
++ *
++ * Outgoing connections come from cutefish-netmonitor (OpenSnitch UI), the
++ * blocked incoming ones from the cutefish-in nftables log.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++import QtQuick 2.12
++import QtQuick.Controls 2.12
++import QtQuick.Layouts 1.12
++import FishUI 1.0 as FishUI
++import Cutefish.Settings 1.0
++import "../"
++
++ItemPage {
++    id: control
++    headerTitle: qsTr("Network Monitor")
++
++    NetMonitorClient {
++        id: monitor
++    }
++
++    Timer {
++        interval: 2000
++        repeat: true
++        running: control.visible
++        triggeredOnStart: true
++        onTriggered: monitor.refresh()
++    }
++
++    Component.onCompleted: monitor.refreshInbound()
++
++    function baseName(path) {
++        return path ? path.substring(path.lastIndexOf("/") + 1) : qsTr("unknown")
++    }
++
++    Scrollable {
++        anchors.fill: parent
++        contentHeight: layout.implicitHeight
++
++        ColumnLayout {
++            id: layout
++            anchors.fill: parent
++            anchors.bottomMargin: FishUI.Units.largeSpacing
++            spacing: FishUI.Units.largeSpacing * 2
++
++            // Status
++            RoundedItem {
++                RowLayout {
++                    ColumnLayout {
++                        spacing: 0
++                        Layout.fillWidth: true
++
++                        Label {
++                            text: qsTr("Ask before apps connect")
++                        }
++
++                        Label {
++                            Layout.fillWidth: true
++                            wrapMode: Text.WordWrap
++                            color: FishUI.Theme.disabledTextColor
++                            text: !monitor.available ? qsTr("The network monitor is not running.")
++                                  : !monitor.daemonConnected ? qsTr("Waiting for the OpenSnitch service…")
++                                  : qsTr("%1 connections, %2 allowed, %3 blocked, %4 rules")
++                                        .arg(monitor.stats.connections || 0)
++                                        .arg(monitor.stats.accepted || 0)
++                                        .arg(monitor.stats.dropped || 0)
++                                        .arg(monitor.stats.rules || 0)
++                        }
++                    }
++
++                    Switch {
++                        enabled: monitor.daemonConnected
++                        checked: monitor.interception
++                        Layout.fillHeight: true
++                        rightPadding: 0
++                        onClicked: monitor.setInterception(checked)
++                    }
++                }
++            }
++
++            // Outgoing
++            RoundedItem {
++                Label {
++                    text: qsTr("Recent outgoing connections")
++                    color: FishUI.Theme.disabledTextColor
++                }
++
++                Label {
++                    visible: monitor.connections.length === 0
++                    text: qsTr("No connections recorded yet.")
++                }
++
++                Repeater {
++                    model: monitor.connections.slice(0, 100)
++
++                    RowLayout {
++                        Layout.fillWidth: true
++                        spacing: FishUI.Units.largeSpacing
++
++                        Rectangle {
++                            width: 8
++                            height: 8
++                            radius: 4
++                            color: modelData.action === "allow" ? "#2EB85C" : FishUI.Theme.redColor
++                        }
++
++                        Label {
++                            text: control.baseName(modelData.process)
++                            elide: Text.ElideRight
++                            Layout.preferredWidth: 140
++                        }
++
++                        Label {
++                            text: (modelData.host !== "" ? modelData.host : modelData.ip) + ":" + modelData.port
++                            elide: Text.ElideMiddle
++                            Layout.fillWidth: true
++                        }
++
++                        Label {
++                            text: modelData.protocol
++                            color: FishUI.Theme.disabledTextColor
++                        }
++                    }
++                }
++            }
++
++            // Rules
++            RoundedItem {
++                Label {
++                    text: qsTr("Rules")
++                    color: FishUI.Theme.disabledTextColor
++                }
++
++                Label {
++                    visible: monitor.rules.length === 0
++                    text: qsTr("No rules yet. Answering a prompt with \"Forever\" adds one.")
++                }
++
++                Repeater {
++                    model: monitor.rules
++
++                    RowLayout {
++                        Layout.fillWidth: true
++                        spacing: FishUI.Units.largeSpacing
++
++                        Label {
++                            text: modelData.description !== "" ? modelData.description : modelData.data
++                            elide: Text.ElideMiddle
++                            Layout.fillWidth: true
++                        }
++
++                        ComboBox {
++                            model: [qsTr("Allow"), qsTr("Deny")]
++                            currentIndex: modelData.action === "allow" ? 0 : 1
++                            onActivated: function(index) {
++                                monitor.setRuleAction(modelData.name, index === 0 ? "allow" : "deny")
++                            }
++                        }
++
++                        Button {
++                            text: qsTr("Delete")
++                            onClicked: monitor.deleteRule(modelData.name)
++                        }
++                    }
++                }
++            }
++
++            // Incoming
++            RoundedItem {
++                RowLayout {
++                    Label {
++                        text: qsTr("Blocked incoming connections")
++                        color: FishUI.Theme.disabledTextColor
++                        Layout.fillWidth: true
++                    }
++
++                    Button {
++                        text: qsTr("Refresh")
++                        onClicked: monitor.refreshInbound()
++                    }
++                }
++
++                Label {
++                    visible: monitor.inbound.length === 0
++                    Layout.fillWidth: true
++                    wrapMode: Text.WordWrap
++                    text: qsTr("Nothing blocked. Incoming connections are refused unless they answer a connection made from this computer.")
++                }
++
++                Repeater {
++                    model: monitor.inbound.slice(0, 100)
++
++                    RowLayout {
++                        Layout.fillWidth: true
++                        spacing: FishUI.Units.largeSpacing
++
++                        Label {
++                            text: modelData.src || ""
++                            Layout.preferredWidth: 180
++                            elide: Text.ElideRight
++                        }
++
++                        Label {
++                            text: (modelData.proto || "") + " " + qsTr("port %1").arg(modelData.dpt || "-")
++                            Layout.fillWidth: true
++                        }
++
++                        Label {
++                            text: modelData["in"] || ""
++                            color: FishUI.Theme.disabledTextColor
++                        }
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/src/qml/SideBar.qml b/src/qml/SideBar.qml
+index 8fb6061..8dab323 100644
+--- a/src/qml/SideBar.qml
++++ b/src/qml/SideBar.qml
+@@ -69,14 +69,23 @@ Item {
+             category: qsTr("Network and connection")
+         }
+ 
+-//        ListElement {
+-//            title: qsTr("Hotspot")
+-//            name: "hotspot"
+-//            page: "qrc:/qml/Hotspot/Main.qml"
+-//            iconSource: "hotspot.svg"
+-//            iconColor: "#0067FF"
+-//            category: qsTr("Network and connection")
+-//        }
++        ListElement {
++            title: qsTr("Hotspot")
++            name: "hotspot"
++            page: "qrc:/qml/Hotspot/Main.qml"
++            iconSource: "hotspot.svg"
++            iconColor: "#0067FF"
++            category: qsTr("Network and connection")
++        }
++
++        ListElement {
++            title: qsTr("Network Monitor")
++            name: "netmonitor"
++            page: "qrc:/qml/NetMonitor/Main.qml"
++            iconSource: "network.svg"
++            iconColor: "#FF6B00"
++            category: qsTr("Network and connection")
++        }
+ 
+         ListElement {
+             title: qsTr("Bluetooth")
+diff --git a/src/qml/main.qml b/src/qml/main.qml
+index b647345..2c3e186 100644
+--- a/src/qml/main.qml
++++ b/src/qml/main.qml
+@@ -43,12 +43,6 @@ FishUI.Window {
+     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+     LayoutMirroring.childrenInherit: true
+ 
+-    FishUI.WindowBlur {
+-        view: rootWindow
+-        windowRadius: rootWindow.windowRadius
+-        enabled: FishUI.Theme.blurEnabled
+-    }
+-
+     RowLayout {
+         anchors.fill: parent
+         spacing: 0
+diff --git a/src/resources.qrc b/src/resources.qrc
+index 26fd3d6..93c5308 100644
+--- a/src/resources.qrc
++++ b/src/resources.qrc
+@@ -103,6 +103,7 @@
+         <file>qml/Bluetooth/Main.qml</file>
+         <file>qml/StandardButton.qml</file>
+         <file>qml/Hotspot/Main.qml</file>
++        <file>qml/NetMonitor/Main.qml</file>
+         <file>images/sidebar/dark/hotspot.svg</file>
+         <file>qml/Application/Main.qml</file>
+         <file>qml/Cursor/Main.qml</file>
+diff --git a/src/windoweffects.cpp b/src/windoweffects.cpp
+new file mode 100644
+index 0000000..1c7fb14
+--- /dev/null
++++ b/src/windoweffects.cpp
+@@ -0,0 +1,198 @@
++/*
++ * Cutefish Remastered: blur and per-display Spaces settings.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++#include "windoweffects.h"
++#include "applicationregistry.h"
++#include "desktopentry.h"
++
++#include <KConfig>
++#include <KConfigGroup>
++#include <KSharedConfig>
++
++#include <QDBusConnection>
++#include <QDBusMessage>
++#include <QDBusPendingCall>
++#include <QFileInfo>
++
++#include <algorithm>
++
++// Forced apps get a little translucency, otherwise the blur behind an opaque
++// window could never be seen. Applied as ordinary KWin window rules.
++static constexpr int ActiveOpacity = 90;
++static constexpr int InactiveOpacity = 85;
++static const QString RulePrefix = QStringLiteral("cutefish-blur-");
++
++static KSharedConfigPtr kwinConfig()
++{
++    return KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals);
++}
++
++//! The window class KWin sees for an app: its StartupWMClass, else the
++//! desktop file id (what Wayland clients use as their app_id).
++static QString windowClassOf(const DesktopEntry *entry)
++{
++    if (!entry->startupWMClass().isEmpty())
++        return entry->startupWMClass().toLower();
++    return QFileInfo(entry->id()).completeBaseName().toLower();
++}
++
++static QVariantMap describe(const QString &windowClass)
++{
++    for (DesktopEntry *entry : ApplicationRegistry::instance()->applicationEntries()) {
++        if (windowClassOf(entry) == windowClass)
++            return {{"windowClass", windowClass}, {"name", entry->name()}, {"icon", entry->icon()}};
++    }
++    return {{"windowClass", windowClass}, {"name", windowClass}, {"icon", QStringLiteral("application-x-executable")}};
++}
++
++WindowEffects::WindowEffects(QObject *parent)
++    : QObject(parent)
++{
++    connect(ApplicationRegistry::instance(), &ApplicationRegistry::applicationsChanged,
++            this, &WindowEffects::forcedAppsChanged);
++}
++
++int WindowEffects::blurStrength() const
++{
++    return kwinConfig()->group(QStringLiteral("Effect-blur")).readEntry("BlurStrength", 15);
++}
++
++void WindowEffects::setBlurStrength(int strength)
++{
++    strength = std::clamp(strength, 1, 15);
++    if (strength == blurStrength())
++        return;
++
++    KConfigGroup group = kwinConfig()->group(QStringLiteral("Effect-blur"));
++    group.writeEntry("BlurStrength", strength);
++    group.sync();
++    reconfigureKWin();
++    emit blurStrengthChanged();
++}
++
++QStringList WindowEffects::forcedClasses() const
++{
++    QStringList classes = kwinConfig()->group(QStringLiteral("Effect-blur")).readEntry("ForceBlurClasses", QStringList());
++    classes.removeAll(QString());
++    return classes;
++}
++
++QVariantList WindowEffects::forcedApps() const
++{
++    QVariantList apps;
++    for (const QString &windowClass : forcedClasses())
++        apps << describe(windowClass);
++    return apps;
++}
++
++QVariantList WindowEffects::availableApps() const
++{
++    const QStringList forced = forcedClasses();
++    QVariantList apps;
++    for (DesktopEntry *entry : ApplicationRegistry::instance()->applicationEntries()) {
++        const QString windowClass = windowClassOf(entry);
++        if (!entry->shouldShow() || forced.contains(windowClass))
++            continue;
++        apps << QVariantMap{{"windowClass", windowClass}, {"name", entry->name()}, {"icon", entry->icon()}};
++    }
++    std::sort(apps.begin(), apps.end(), [](const QVariant &a, const QVariant &b) {
++        return a.toMap().value("name").toString().localeAwareCompare(b.toMap().value("name").toString()) < 0;
++    });
++    return apps;
++}
++
++void WindowEffects::addForcedApp(const QString &windowClass)
++{
++    QStringList classes = forcedClasses();
++    const QString c = windowClass.trimmed().toLower();
++    if (c.isEmpty() || classes.contains(c))
++        return;
++    classes << c;
++    setForcedClasses(classes);
++}
++
++void WindowEffects::removeForcedApp(const QString &windowClass)
++{
++    QStringList classes = forcedClasses();
++    if (classes.removeAll(windowClass.toLower()) == 0)
++        return;
++    setForcedClasses(classes);
++}
++
++void WindowEffects::setForcedClasses(const QStringList &classes)
++{
++    KConfigGroup blur = kwinConfig()->group(QStringLiteral("Effect-blur"));
++    blur.writeEntry("ForceBlurClasses", classes);
++    blur.sync();
++
++    // Keep our opacity rules in step with the list, leaving the user's own
++    // window rules untouched.
++    KConfig rulesConfig(QStringLiteral("kwinrulesrc"), KConfig::NoGlobals);
++    KConfigGroup general = rulesConfig.group(QStringLiteral("General"));
++    QStringList rules = general.readEntry("rules", QStringList());
++    for (const QString &rule : rules) {
++        if (rule.startsWith(RulePrefix))
++            rulesConfig.deleteGroup(rule);
++    }
++    rules.erase(std::remove_if(rules.begin(), rules.end(),
++                               [](const QString &rule) { return rule.startsWith(RulePrefix); }),
++                rules.end());
++
++    for (const QString &windowClass : classes) {
++        const QString id = RulePrefix + windowClass;
++        KConfigGroup rule = rulesConfig.group(id);
++        rule.writeEntry("Description", QStringLiteral("Cutefish blur: %1").arg(windowClass));
++        rule.writeEntry("wmclass", windowClass);
++        rule.writeEntry("wmclasscomplete", false);
++        rule.writeEntry("wmclassmatch", 1); // exact
++        rule.writeEntry("opacityactive", ActiveOpacity);
++        rule.writeEntry("opacityactiverule", 2); // force
++        rule.writeEntry("opacityinactive", InactiveOpacity);
++        rule.writeEntry("opacityinactiverule", 2);
++        rules << id;
++    }
++    general.writeEntry("rules", rules);
++    general.writeEntry("count", rules.size());
++    rulesConfig.sync();
++
++    reconfigureKWin();
++    emit forcedAppsChanged();
++}
++
++bool WindowEffects::separateSpaces() const
++{
++    return kwinConfig()->group(QStringLiteral("Windows")).readEntry("PerOutputVirtualDesktops", true);
++}
++
++void WindowEffects::setSeparateSpaces(bool enabled)
++{
++    if (enabled == separateSpaces())
++        return;
++
++    KConfigGroup group = kwinConfig()->group(QStringLiteral("Windows"));
++    group.writeEntry("PerOutputVirtualDesktops", enabled);
++    group.sync();
++    reconfigureKWin();
++    emit separateSpacesChanged();
++}
++
++void WindowEffects::reconfigureKWin()
++{
++    // Reloads options and window rules; the blur effect re-reads its own
++    // group only when asked to directly.
++    QDBusConnection bus = QDBusConnection::sessionBus();
++    bus.asyncCall(QDBusMessage::createMethodCall(
++        QStringLiteral("org.kde.KWin"), QStringLiteral("/KWin"),
++        QStringLiteral("org.kde.KWin"), QStringLiteral("reconfigure")));
++    QDBusMessage blur = QDBusMessage::createMethodCall(
++        QStringLiteral("org.kde.KWin"), QStringLiteral("/Effects"),
++        QStringLiteral("org.kde.kwin.Effects"), QStringLiteral("reconfigureEffect"));
++    blur << QStringLiteral("blur");
++    bus.asyncCall(blur);
++}
+diff --git a/src/windoweffects.h b/src/windoweffects.h
+new file mode 100644
+index 0000000..99020d1
+--- /dev/null
++++ b/src/windoweffects.h
+@@ -0,0 +1,54 @@
++/*
++ * Cutefish Remastered: blur and per-display Spaces settings, stored in KWin's
++ * own configuration (kwinrc, kwinrulesrc) so KWin stays the single owner.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++#ifndef WINDOWEFFECTS_H
++#define WINDOWEFFECTS_H
++
++#include <QObject>
++#include <QStringList>
++#include <QVariantList>
++
++class WindowEffects : public QObject
++{
++    Q_OBJECT
++    Q_PROPERTY(int blurStrength READ blurStrength WRITE setBlurStrength NOTIFY blurStrengthChanged)
++    Q_PROPERTY(QVariantList forcedApps READ forcedApps NOTIFY forcedAppsChanged)
++    Q_PROPERTY(QVariantList availableApps READ availableApps NOTIFY forcedAppsChanged)
++    Q_PROPERTY(bool separateSpaces READ separateSpaces WRITE setSeparateSpaces NOTIFY separateSpacesChanged)
++
++public:
++    explicit WindowEffects(QObject *parent = nullptr);
++
++    int blurStrength() const;
++    void setBlurStrength(int strength);
++
++    //! [{ windowClass, name, icon }] of apps whose whole window is blurred.
++    QVariantList forcedApps() const;
++    //! Installed apps that can still be added.
++    QVariantList availableApps() const;
++
++    Q_INVOKABLE void addForcedApp(const QString &windowClass);
++    Q_INVOKABLE void removeForcedApp(const QString &windowClass);
++
++    bool separateSpaces() const;
++    void setSeparateSpaces(bool enabled);
++
++signals:
++    void blurStrengthChanged();
++    void forcedAppsChanged();
++    void separateSpacesChanged();
++
++private:
++    QStringList forcedClasses() const;
++    void setForcedClasses(const QStringList &classes);
++    static void reconfigureKWin();
++};
++
++#endif // WINDOWEFFECTS_H
+-- 
+2.43.0
+

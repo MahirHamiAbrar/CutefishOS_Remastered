@@ -1,0 +1,120 @@
+From f18d05dbcdfbf7e7ad9f10b5edc7ef0e23194b63 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sat, 26 Sep 2026 01:06:24 +0600
+Subject: [PATCH 2/2] Autostart: follow the XDG rules (OnlyShowIn/NotShowIn,
+ Hidden, TryExec, user overrides) instead of skipping every OnlyShowIn entry
+
+---
+ debian/changelog           |  6 +++++
+ session/processmanager.cpp | 52 ++++++++++++++++++++++++++++++--------
+ 2 files changed, 48 insertions(+), 10 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 1d04bf2..7ec0423 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-core (0.8+remastered2) resolute; urgency=medium
++
++  * Autostart: follow the XDG rules (OnlyShowIn/NotShowIn, Hidden, TryExec, user overrides) instead of skipping every OnlyShowIn entry
++
++ -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 01:06:24 +0600
++
+ cutefish-core (0.8+remastered1) resolute; urgency=medium
+ 
+   * Session: export GTK_MODULES=appmenu-gtk-module for the global menu
+diff --git a/session/processmanager.cpp b/session/processmanager.cpp
+index f55f9ea..95d4a44 100644
+--- a/session/processmanager.cpp
++++ b/session/processmanager.cpp
+@@ -21,6 +21,7 @@
+ #include "application.h"
+ #include "applicationlauncher.h"
+ #include "applicationruntime.h"
++#include "desktopentry.h"
+ 
+ #include <QCoreApplication>
+ #include <QStandardPaths>
+@@ -29,6 +30,9 @@
+ #include <QProcessEnvironment>
+ #include <QTimer>
+ #include <QDir>
++#include <QFile>
++#include <QFileInfo>
++#include <QSet>
+ #include <QDBusConnectionInterface>
+ #include <QDBusReply>
+ #include <QDBusServiceWatcher>
+@@ -234,9 +238,35 @@ void ProcessManager::startDaemonProcess()
+     }
+ }
+ 
++// XDG autostart rules: a user entry replaces the system entry of the same
++// name; Hidden disables it; OnlyShowIn/NotShowIn are matched against this
++// desktop; a missing TryExec skips it. NoDisplay does not apply to autostart.
++static bool shouldAutostart(const DesktopEntryData &entry)
++{
++    if (entry.hidden || entry.exec.isEmpty())
++        return false;
++    if (!entry.tryExec.isEmpty() && QStandardPaths::findExecutable(entry.tryExec).isEmpty()
++            && !QFileInfo(entry.tryExec).isExecutable())
++        return false;
++
++    const QStringList desktops = DesktopEntry::currentDesktops();
++    auto matches = [&desktops](const QStringList &list) {
++        for (const QString &desktop : list) {
++            if (desktops.contains(desktop, Qt::CaseInsensitive))
++                return true;
++        }
++        return false;
++    };
++    if (!entry.onlyShowIn.isEmpty() && !matches(entry.onlyShowIn))
++        return false;
++    return !matches(entry.notShowIn);
++}
++
+ void ProcessManager::loadAutoStartProcess()
+ {
+     QStringList execList;
++    QSet<QString> seen;
++    // User directories come first, so their entries win.
+     const QStringList dirs = QStandardPaths::locateAll(QStandardPaths::GenericConfigLocation,
+                                                        QStringLiteral("autostart"),
+                                                        QStandardPaths::LocateDirectory);
+@@ -244,21 +274,23 @@ void ProcessManager::loadAutoStartProcess()
+         const QDir d(dir);
+         const QStringList fileNames = d.entryList(QStringList() << QStringLiteral("*.desktop"));
+         for (const QString &file : fileNames) {
+-            QSettings desktop(d.absoluteFilePath(file), QSettings::IniFormat);
+-            desktop.beginGroup("Desktop Entry");
+-
+-            if (desktop.contains("OnlyShowIn"))
++            if (seen.contains(file))
+                 continue;
++            seen.insert(file);
+ 
+-            const QString execValue = desktop.value("Exec").toString();
++            QFile f(d.absoluteFilePath(file));
++            DesktopEntryData entry;
++            if (!f.open(QIODevice::ReadOnly)
++                    || !DesktopEntry::parse(file, f.fileName(), f.readAll(), &entry)
++                    || !shouldAutostart(entry))
++                continue;
+ 
+-            if (execValue.contains("cutefish-services") ||
+-                    execValue.contains("cutefish-appruntime"))
++            // The session starts these itself.
++            if (entry.exec.contains("cutefish-services") ||
++                    entry.exec.contains("cutefish-appruntime"))
+                 continue;
+ 
+-            if (!execValue.isEmpty()) {
+-                execList << execValue;
+-            }
++            execList << entry.exec;
+         }
+     }
+ 
+-- 
+2.43.0
+

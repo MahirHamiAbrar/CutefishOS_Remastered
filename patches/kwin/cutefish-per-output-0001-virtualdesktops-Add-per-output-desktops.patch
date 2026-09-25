@@ -1,0 +1,2917 @@
+From bef85188caa3712e6775ef8c3e303f29f546263d Mon Sep 17 00:00:00 2001
+From: Hynek Schlindenbuch <schlindenbuch.h@seznam.cz>
+Date: Tue, 18 Nov 2025 10:40:09 +0100
+Subject: [PATCH] virtualdesktops: Add per-output desktops
+
+VirtualDesktopManager now tracks the current virtual desktop separately
+for each output. By default it switches the desktop on all outputs
+together, but there is now an option to enable switching desktops
+separately for each output.
+
+CCBUG: 107302
+---
+ src/activation.cpp                            |  10 +-
+ src/activities.cpp                            |  70 ++++--
+ src/activities.h                              |  10 +-
+ src/dbusinterface.cpp                         |  16 +-
+ src/dbusinterface.h                           |   1 +
+ src/effect/effecthandler.cpp                  |  17 +-
+ src/effect/effecthandler.h                    |  20 +-
+ src/effect/effectwindow.cpp                   |   2 +-
+ src/focuschain.cpp                            |   7 +-
+ src/focuschain.h                              |   7 -
+ src/internalwindow.cpp                        |   4 +-
+ src/kcms/desktop/ui/main.qml                  |  14 ++
+ src/kcms/desktop/virtualdesktopssettings.kcfg |   4 +
+ src/keyboard_layout_switching.cpp             |   1 +
+ src/kwin.kcfg                                 |   3 +
+ src/layers.cpp                                |   2 +-
+ src/options.cpp                               |  11 +
+ src/options.h                                 |  15 ++
+ src/placement.cpp                             |  12 +-
+ .../package/contents/code/main.js             |   5 +-
+ .../fadedesktop/package/contents/code/main.js |   6 +-
+ .../frozenapp/package/contents/code/main.js   |   7 +-
+ .../windowsrunnerinterface.cpp                |   2 +-
+ .../minimizeall/package/contents/code/main.js |   2 +-
+ src/plugins/overview/overvieweffect.cpp       |  28 ++-
+ src/plugins/overview/overvieweffect.h         |   6 +-
+ src/plugins/overview/qml/Main.qml             |  56 +++--
+ src/plugins/tileseditor/qml/Main.qml          |  15 +-
+ .../package/contents/code/main.js             |   5 +-
+ src/plugins/windowview/qml/Main.qml           |  18 +-
+ src/scene/windowitem.cpp                      |   5 +
+ src/screenedge.cpp                            |  15 +-
+ src/scripting/desktopbackgrounditem.cpp       |   2 +-
+ src/scripting/workspace_wrapper.cpp           |  29 ++-
+ src/scripting/workspace_wrapper.h             |  23 +-
+ src/tabbox/tabbox.cpp                         |   4 +-
+ src/tiles/tile.cpp                            |   2 +-
+ src/tiles/tilemanager.cpp                     |  11 +-
+ src/useractions.cpp                           |  16 +-
+ src/virtualdesktops.cpp                       | 230 +++++++++++++-----
+ src/virtualdesktops.h                         |  70 +++++-
+ src/wayland/CMakeLists.txt                    |   2 +-
+ .../org-kde-plasma-virtual-desktop.xml        | 144 +++++++++++
+ src/wayland/plasmavirtualdesktop.cpp          |  47 +++-
+ src/wayland/plasmavirtualdesktop.h            |  12 +
+ src/waylandwindow.cpp                         |   4 +-
+ src/window.cpp                                |  48 +++-
+ src/window.h                                  |   5 +-
+ src/workspace.cpp                             |  55 +++--
+ src/workspace.h                               |  13 +-
+ src/x11window.cpp                             |  18 +-
+ src/xdgshellwindow.cpp                        |   9 +
+ 52 files changed, 890 insertions(+), 250 deletions(-)
+ create mode 100644 src/wayland/org-kde-plasma-virtual-desktop.xml
+
+diff --git a/src/activation.cpp b/src/activation.cpp
+index 3017eb6b6e..46e374890d 100644
+--- a/src/activation.cpp
++++ b/src/activation.cpp
+@@ -311,10 +311,10 @@ void Workspace::activateWindow(Window *window, bool force)
+         ++block_focus;
+         switch (options->activationDesktopPolicy()) {
+         case Options::ActivationDesktopPolicy::SwitchToOtherDesktop:
+-            VirtualDesktopManager::self()->setCurrent(window->desktops().constLast());
++            VirtualDesktopManager::self()->setCurrent(window->desktops().constLast(), window->output());
+             break;
+         case Options::ActivationDesktopPolicy::BringToCurrentDesktop:
+-            window->enterDesktop(VirtualDesktopManager::self()->currentDesktop());
++            window->enterDesktop(VirtualDesktopManager::self()->currentDesktop(window->output()));
+             break;
+         case Options::ActivationDesktopPolicy::DoNothing:
+             break;
+@@ -326,7 +326,7 @@ void Workspace::activateWindow(Window *window, bool force)
+         ++block_focus;
+         // DBUS!
+         // first isn't necessarily best, but it's easiest
+-        m_activities->setCurrent(window->activities().constFirst(), window->isOnAllDesktops() ? nullptr : window->desktops().front());
++        m_activities->setCurrent(window->activities().constFirst(), window->isOnAllDesktops() ? nullptr : window->desktops().front(), window->output());
+         --block_focus;
+     }
+ #endif
+@@ -442,8 +442,8 @@ void Workspace::activateNextWindow(Window *window)
+     Window *focusCandidate = nullptr;
+ 
+     if (options->focusPolicyIsReasonable()) {
+-        VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop();
+         LogicalOutput *output = window ? window->output() : workspace()->activeOutput();
++        VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop(output);
+ 
+         if (!focusCandidate && showingDesktop()) {
+             focusCandidate = findDesktop(desktop, output); // to not break the state
+@@ -492,7 +492,7 @@ void Workspace::switchToOutput(LogicalOutput *output)
+         return;
+     }
+     closeActivePopup();
+-    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop();
++    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop(output);
+     Window *get_focus = m_focusChain->getForActivation(desktop, output);
+     if (get_focus == nullptr) {
+         get_focus = findDesktop(desktop, output);
+diff --git a/src/activities.cpp b/src/activities.cpp
+index a68633ec4d..95c841332c 100644
+--- a/src/activities.cpp
++++ b/src/activities.cpp
+@@ -35,15 +35,20 @@ Activities::Activities()
+     connect(m_controller, &KActivities::Controller::serviceStatusChanged, this, &Activities::slotServiceStatusChanged);
+ 
+     m_config = KSharedConfig::openStateConfig();
+-    auto lastDesktopConfig = m_config->group("Activities").group("LastVirtualDesktop");
+-
+-    // migrate old config
+-    kwinApp()->config()->group("Activities").group("LastVirtualDesktop").moveValuesTo(lastDesktopConfig);
+-
+-    for (const auto &activity : lastDesktopConfig.keyList()) {
+-        const QString desktop = lastDesktopConfig.readEntry(activity);
+-        if (!desktop.isEmpty()) {
+-            m_lastVirtualDesktop[activity] = desktop;
++    // remove old config
++    m_config->group("Activities").deleteGroup("LastVirtualDesktop");
++    kwinApp()->config()->group("Activities").deleteGroup("LastVirtualDesktop");
++    auto perOutputLastDesktopConfig = m_config->group("Activities").group("PerOutputLastVirtualDesktop");
++
++    const auto &activities = perOutputLastDesktopConfig.groupList();
++    for (const auto &activity : activities) {
++        auto activityLastDesktopConfig = perOutputLastDesktopConfig.group(activity);
++        const auto &outputUuids = activityLastDesktopConfig.keyList();
++        for (const auto &outputUuid : outputUuids) {
++            const QString desktop = activityLastDesktopConfig.readEntry(outputUuid);
++            if (!desktop.isEmpty()) {
++                m_lastVirtualDesktop[activity][outputUuid] = desktop;
++            }
+         }
+     }
+ 
+@@ -62,6 +67,21 @@ KActivities::Consumer::ServiceStatus Activities::serviceStatus() const
+     return m_controller->serviceStatus();
+ }
+ 
++std::optional<QString> Activities::findLastDesktopForOutput(LogicalOutput *output) const
++{
++    const auto it = m_lastVirtualDesktop.find(m_current);
++    if (it == m_lastVirtualDesktop.end()) {
++        return {};
++    }
++
++    const auto outputDesktopIt = it->second.find(output->uuid());
++    if (outputDesktopIt == it->second.end()) {
++        return {};
++    }
++
++    return outputDesktopIt->second;
++}
++
+ void Activities::slotServiceStatusChanged()
+ {
+     if (m_controller->serviceStatus() != KActivities::Consumer::Running) {
+@@ -79,19 +99,19 @@ void Activities::slotServiceStatusChanged()
+     }
+ }
+ 
+-void Activities::setCurrent(const QString &activity, VirtualDesktop *desktop)
++void Activities::setCurrent(const QString &activity, VirtualDesktop *desktop, LogicalOutput *output)
+ {
+-    if (desktop) {
+-        m_lastVirtualDesktop[activity] = desktop->id();
++    if (desktop && output) {
++        m_lastVirtualDesktop[activity][output->uuid()] = desktop->id();
+     }
+     m_controller->setCurrentActivity(activity);
+ }
+ 
+-void Activities::notifyCurrentDesktopChanged(VirtualDesktop *desktop)
++void Activities::notifyCurrentDesktopChanged(VirtualDesktop *desktop, LogicalOutput *output)
+ {
+-    m_lastVirtualDesktop[m_current] = desktop->id();
+-    auto lastDesktopConfig = m_config->group("Activities").group("LastVirtualDesktop");
+-    lastDesktopConfig.writeEntry(m_current, desktop->id());
++    m_lastVirtualDesktop[m_current][output->uuid()] = desktop->id();
++    auto lastDesktopConfig = m_config->group("Activities").group("PerOutputLastVirtualDesktop").group(m_current);
++    lastDesktopConfig.writeEntry(output->uuid(), desktop->id());
+ }
+ 
+ void Activities::slotCurrentChanged(const QString &newActivity)
+@@ -103,14 +123,18 @@ void Activities::slotCurrentChanged(const QString &newActivity)
+     m_previous = m_current;
+     m_current = newActivity;
+ 
+-    if (m_previous != nullUuid()) {
+-        m_lastVirtualDesktop[m_previous] = VirtualDesktopManager::self()->currentDesktop()->id();
+-    }
+     const auto it = m_lastVirtualDesktop.find(m_current);
+     if (it != m_lastVirtualDesktop.end()) {
+-        VirtualDesktop *desktop = VirtualDesktopManager::self()->desktopForId(it->second);
+-        if (desktop) {
+-            VirtualDesktopManager::self()->setCurrent(desktop);
++        const auto &outputDesktops = it->second;
++        const auto outputs = workspace()->outputs();
++        for (LogicalOutput *output : outputs) {
++            const auto outputDesktopIt = outputDesktops.find(output->uuid());
++            if (outputDesktopIt != outputDesktops.end()) {
++                VirtualDesktop *desktop = VirtualDesktopManager::self()->desktopForId(outputDesktopIt->second);
++                if (desktop) {
++                    VirtualDesktopManager::self()->setCurrent(desktop, output);
++                }
++            }
+         }
+     }
+ 
+@@ -131,7 +155,7 @@ void Activities::slotRemoved(const QString &activity)
+     }
+ 
+     m_lastVirtualDesktop.erase(activity);
+-    m_config->group("Activities").group("LastVirtualDesktop").deleteEntry(activity);
++    m_config->group("Activities").group("PerOutputLastVirtualDesktop").deleteGroup(activity);
+ }
+ 
+ void Activities::toggleWindowOnActivity(Window *window, const QString &activity, bool dont_activate)
+diff --git a/src/activities.h b/src/activities.h
+index cdaeda7e67..a1dd14f121 100644
+--- a/src/activities.h
++++ b/src/activities.h
+@@ -11,6 +11,7 @@
+ #include <QObject>
+ #include <QStringList>
+ #include <kwin_export.h>
++#include <optional>
+ #include <unordered_map>
+ 
+ #include <KSharedConfig>
+@@ -25,6 +26,7 @@ namespace KWin
+ {
+ class Window;
+ class VirtualDesktop;
++class LogicalOutput;
+ 
+ class KWIN_EXPORT Activities : public QObject
+ {
+@@ -37,7 +39,7 @@ public:
+      * Sets the current activity to @param activity, and if desktop isn't nullptr,
+      * ensures that this doesn't interfere with virtual desktop switching
+      */
+-    void setCurrent(const QString &activity, VirtualDesktop *desktop);
++    void setCurrent(const QString &activity, VirtualDesktop *desktop, LogicalOutput *output);
+     /**
+      * Adds/removes window \a window to/from \a activity.
+      *
+@@ -53,6 +55,8 @@ public:
+ 
+     KActivities::Controller::ServiceStatus serviceStatus() const;
+ 
++    std::optional<QString> findLastDesktopForOutput(LogicalOutput *output) const;
++
+ Q_SIGNALS:
+     /**
+      * emitted before the current activity actually changes
+@@ -77,7 +81,7 @@ Q_SIGNALS:
+     void removed(const QString &id);
+ 
+ public Q_SLOTS:
+-    void notifyCurrentDesktopChanged(VirtualDesktop *desktop);
++    void notifyCurrentDesktopChanged(VirtualDesktop *desktop, LogicalOutput *output);
+ 
+ private Q_SLOTS:
+     void slotServiceStatusChanged();
+@@ -88,7 +92,7 @@ private:
+     QString m_previous;
+     QString m_current;
+     KActivities::Controller *m_controller;
+-    std::unordered_map<QString, QString> m_lastVirtualDesktop;
++    std::unordered_map<QString, std::unordered_map<QString, QString>> m_lastVirtualDesktop;
+     KSharedConfig::Ptr m_config;
+ };
+ 
+diff --git a/src/dbusinterface.cpp b/src/dbusinterface.cpp
+index 3468da5ba2..caba20d7ac 100644
+--- a/src/dbusinterface.cpp
++++ b/src/dbusinterface.cpp
+@@ -298,8 +298,20 @@ VirtualDesktopManagerDBusInterface::VirtualDesktopManagerDBusInterface(VirtualDe
+                                                  QStringLiteral("org.kde.KWin.VirtualDesktopManager"),
+                                                  this);
+ 
+-    connect(m_manager, &VirtualDesktopManager::currentChanged, this, [this]() {
+-        Q_EMIT currentChanged(m_manager->currentDesktop()->id());
++    connect(m_manager, &VirtualDesktopManager::currentChanged, this, [this](VirtualDesktop *oldDesktop, VirtualDesktop *newDesktop, LogicalOutput *output) {
++        if (output != workspace()->activeOutput()) {
++            return;
++        }
++        m_lastDesktopId = newDesktop->id();
++        Q_EMIT currentChanged(m_lastDesktopId);
++    });
++    connect(workspace(), &Workspace::activeOutputChanged, this, [this](LogicalOutput *output) {
++        QString newDesktopId = m_manager->currentDesktop(output)->id();
++        if (m_lastDesktopId == newDesktopId) {
++            return;
++        }
++        m_lastDesktopId = newDesktopId;
++        Q_EMIT currentChanged(m_lastDesktopId);
+     });
+ 
+     connect(m_manager, &VirtualDesktopManager::countChanged, this, [this](uint previousCount, uint newCount) {
+diff --git a/src/dbusinterface.h b/src/dbusinterface.h
+index b128e2270b..bba6478b9d 100644
+--- a/src/dbusinterface.h
++++ b/src/dbusinterface.h
+@@ -243,6 +243,7 @@ public Q_SLOTS:
+ 
+ private:
+     VirtualDesktopManager *m_manager;
++    QString m_lastDesktopId;
+ };
+ 
+ class PluginManagerDBusInterface : public QObject
+diff --git a/src/effect/effecthandler.cpp b/src/effect/effecthandler.cpp
+index 6f6142a820..5255f36ca1 100644
+--- a/src/effect/effecthandler.cpp
++++ b/src/effect/effecthandler.cpp
+@@ -165,12 +165,11 @@ EffectsHandler::EffectsHandler(Compositor *compositor, WorkspaceScene *scene)
+             Q_EMIT showingDesktopChanged(showing);
+         }
+     });
+-    connect(ws, &Workspace::currentDesktopChanged, this, [this](VirtualDesktop *old, Window *window) {
+-        VirtualDesktop *newDesktop = VirtualDesktopManager::self()->currentDesktop();
+-        Q_EMIT desktopChanged(old, newDesktop, window ? window->effectWindow() : nullptr);
++    connect(ws, &Workspace::currentDesktopChanged, this, [this](VirtualDesktop *old, VirtualDesktop *newDesktop, LogicalOutput *output, Window *window) {
++        Q_EMIT desktopChanged(old, newDesktop, window ? window->effectWindow() : nullptr, output);
+     });
+-    connect(ws, &Workspace::currentDesktopChanging, this, [this](VirtualDesktop *currentDesktop, QPointF offset, KWin::Window *window) {
+-        Q_EMIT desktopChanging(currentDesktop, offset, window ? window->effectWindow() : nullptr);
++    connect(ws, &Workspace::currentDesktopChanging, this, [this](VirtualDesktop *currentDesktop, QPointF offset, KWin::LogicalOutput *output, KWin::Window *window) {
++        Q_EMIT desktopChanging(currentDesktop, offset, window ? window->effectWindow() : nullptr, output);
+     });
+     connect(ws, &Workspace::currentDesktopChangingCancelled, this, [this]() {
+         Q_EMIT desktopChangingCancelled();
+@@ -836,9 +835,9 @@ QString EffectsHandler::currentActivity() const
+ #endif
+ }
+ 
+-VirtualDesktop *EffectsHandler::currentDesktop() const
++VirtualDesktop *EffectsHandler::currentDesktop(LogicalOutput *output) const
+ {
+-    return VirtualDesktopManager::self()->currentDesktop();
++    return VirtualDesktopManager::self()->currentDesktop(output);
+ }
+ 
+ QList<VirtualDesktop *> EffectsHandler::desktops() const
+@@ -846,9 +845,9 @@ QList<VirtualDesktop *> EffectsHandler::desktops() const
+     return VirtualDesktopManager::self()->desktops();
+ }
+ 
+-void EffectsHandler::setCurrentDesktop(VirtualDesktop *desktop)
++void EffectsHandler::setCurrentDesktop(VirtualDesktop *desktop, LogicalOutput *output)
+ {
+-    VirtualDesktopManager::self()->setCurrent(desktop);
++    VirtualDesktopManager::self()->setCurrent(desktop, output);
+ }
+ 
+ QSize EffectsHandler::desktopGridSize() const
+diff --git a/src/effect/effecthandler.h b/src/effect/effecthandler.h
+index c7d9fec61b..f29435128f 100644
+--- a/src/effect/effecthandler.h
++++ b/src/effect/effecthandler.h
+@@ -320,17 +320,19 @@ public:
+     QString currentActivity() const;
+     // Desktops
+     /**
+-     * @returns The current desktop.
++     * @param output The output to return the current desktop for (default = active screen).
++     * @returns The current desktop on screen @a output.
+      */
+-    VirtualDesktop *currentDesktop() const;
++    VirtualDesktop *currentDesktop(KWin::LogicalOutput *output = nullptr) const;
+     /**
+      * @returns Total number of desktops currently in existence.
+      */
+     QList<VirtualDesktop *> desktops() const;
+     /**
+-     * Set the current desktop to @a desktop.
++     * @param output The output to set the current desktop for (default = active screen).
++     * Set the current desktop to @a desktop on screen @a output.
+      */
+-    void setCurrentDesktop(KWin::VirtualDesktop *desktop);
++    void setCurrentDesktop(KWin::VirtualDesktop *desktop, KWin::LogicalOutput *output = nullptr);
+     /**
+      * @returns The size of desktop layout in grid units.
+      */
+@@ -782,9 +784,10 @@ Q_SIGNALS:
+      * @param oldDesktop The previously current desktop
+      * @param newDesktop The new current desktop
+      * @param with The window which is taken over to the new desktop, can be NULL
++     * @param output The screen where the desktop was changed.
+      * @since 4.9
+      */
+-    void desktopChanged(KWin::VirtualDesktop *oldDesktop, KWin::VirtualDesktop *newDesktop, KWin::EffectWindow *with);
++    void desktopChanged(KWin::VirtualDesktop *oldDesktop, KWin::VirtualDesktop *newDesktop, KWin::EffectWindow *with, KWin::LogicalOutput *output);
+ 
+     /**
+      * Signal emitted while desktop is changing for animation.
+@@ -792,8 +795,13 @@ Q_SIGNALS:
+      * @param offset The current desktop offset.
+      * offset.x() = .6 means 60% of the way to the desktop to the right.
+      * Positive Values means Up and Right.
++     * @param output The affected screen. If it affects multiple screens, then a separate signal is emitted for each one.
++     */
++    void desktopChanging(KWin::VirtualDesktop *currentDesktop, QPointF offset, KWin::EffectWindow *with, KWin::LogicalOutput *output);
++
++    /**
++     * Signal emitted when realtime desktop switching animation is cancelled. It applies to all screens.
+      */
+-    void desktopChanging(KWin::VirtualDesktop *currentDesktop, QPointF offset, KWin::EffectWindow *with);
+     void desktopChangingCancelled();
+     void desktopAdded(KWin::VirtualDesktop *desktop);
+     void desktopRemoved(KWin::VirtualDesktop *desktop);
+diff --git a/src/effect/effectwindow.cpp b/src/effect/effectwindow.cpp
+index 824fb44d9e..dd92be28a8 100644
+--- a/src/effect/effectwindow.cpp
++++ b/src/effect/effectwindow.cpp
+@@ -168,7 +168,7 @@ bool EffectWindow::isOnCurrentActivity() const
+ 
+ bool EffectWindow::isOnCurrentDesktop() const
+ {
+-    return isOnDesktop(effects->currentDesktop());
++    return isOnDesktop(effects->currentDesktop(screen()));
+ }
+ 
+ bool EffectWindow::isOnDesktop(VirtualDesktop *desktop) const
+diff --git a/src/focuschain.cpp b/src/focuschain.cpp
+index 857e3a053c..ade450f4e7 100644
+--- a/src/focuschain.cpp
++++ b/src/focuschain.cpp
+@@ -7,6 +7,7 @@
+     SPDX-License-Identifier: GPL-2.0-or-later
+ */
+ #include "focuschain.h"
++#include "virtualdesktops.h"
+ #include "window.h"
+ #include "workspace.h"
+ 
+@@ -30,9 +31,6 @@ void FocusChain::addDesktop(VirtualDesktop *desktop)
+ 
+ void FocusChain::removeDesktop(VirtualDesktop *desktop)
+ {
+-    if (m_currentDesktop == desktop) {
+-        m_currentDesktop = nullptr;
+-    }
+     m_desktopFocusChains.remove(desktop);
+ }
+ 
+@@ -68,13 +66,14 @@ void FocusChain::update(Window *window, FocusChain::Change change)
+     }
+ 
+     if (window->isOnAllDesktops()) {
++        const VirtualDesktop *currentDesktop = VirtualDesktopManager::self()->currentDesktop(window->output());
+         // Now on all desktops, add it to focus chains it is not already in
+         for (auto it = m_desktopFocusChains.begin();
+              it != m_desktopFocusChains.end();
+              ++it) {
+             auto &chain = it.value();
+             // Making first/last works only on current desktop, don't affect all desktops
+-            if (it.key() == m_currentDesktop
++            if (it.key() == currentDesktop
+                 && (change == MakeFirst || change == MakeLast)) {
+                 if (change == MakeFirst) {
+                     makeFirstInChain(window, chain);
+diff --git a/src/focuschain.h b/src/focuschain.h
+index c988555ed6..f6baa471ea 100644
+--- a/src/focuschain.h
++++ b/src/focuschain.h
+@@ -176,7 +176,6 @@ public Q_SLOTS:
+     void remove(KWin::Window *window);
+     void setSeparateScreenFocus(bool enabled);
+     void setActiveWindow(KWin::Window *window);
+-    void setCurrentDesktop(VirtualDesktop *desktop);
+     void addDesktop(VirtualDesktop *desktop);
+     void removeDesktop(VirtualDesktop *desktop);
+ 
+@@ -212,7 +211,6 @@ private:
+     QHash<VirtualDesktop *, Chain> m_desktopFocusChains;
+     bool m_separateScreenFocus = false;
+     Window *m_activeWindow = nullptr;
+-    VirtualDesktop *m_currentDesktop = nullptr;
+ };
+ 
+ inline bool FocusChain::contains(Window *window) const
+@@ -230,9 +228,4 @@ inline void FocusChain::setActiveWindow(Window *window)
+     m_activeWindow = window;
+ }
+ 
+-inline void FocusChain::setCurrentDesktop(VirtualDesktop *desktop)
+-{
+-    m_currentDesktop = desktop;
+-}
+-
+ } // namespace
+diff --git a/src/internalwindow.cpp b/src/internalwindow.cpp
+index c03d03696b..768148be19 100644
+--- a/src/internalwindow.cpp
++++ b/src/internalwindow.cpp
+@@ -445,7 +445,7 @@ void InternalWindow::commitGeometry(const RectF &rect)
+     // The client geometry and the buffer geometry are the same.
+     const RectF oldClientGeometry = m_clientGeometry;
+     const RectF oldFrameGeometry = m_frameGeometry;
+-    const LogicalOutput *oldOutput = m_output;
++    LogicalOutput *oldOutput = m_output;
+ 
+     Q_EMIT frameGeometryAboutToChange();
+ 
+@@ -467,7 +467,7 @@ void InternalWindow::commitGeometry(const RectF &rect)
+         Q_EMIT frameGeometryChanged(oldFrameGeometry);
+     }
+     if (oldOutput != m_output) {
+-        Q_EMIT outputChanged();
++        Q_EMIT outputChanged(oldOutput);
+     }
+ }
+ 
+diff --git a/src/kcms/desktop/ui/main.qml b/src/kcms/desktop/ui/main.qml
+index 0c4c5b5314..e3f5cff80c 100644
+--- a/src/kcms/desktop/ui/main.qml
++++ b/src/kcms/desktop/ui/main.qml
+@@ -219,6 +219,20 @@ KCM.ScrollViewKCM {
+                 }
+             }
+ 
++            QQC2.CheckBox {
++                id: perOutputVirtualDesktops
++
++                text: i18n("Switch desktops independently for each screen")
++                enabled: !kcm.virtualDesktopsSettings.isImmutable("perOutputVirtualDesktops")
++                checked: kcm.virtualDesktopsSettings.perOutputVirtualDesktops
++                onToggled: kcm.virtualDesktopsSettings.perOutputVirtualDesktops = checked
++
++                KCM.SettingStateBinding {
++                    configObject: kcm.virtualDesktopsSettings
++                    settingName: "perOutputVirtualDesktops"
++                }
++            }
++
+             RowLayout {
+                 Layout.fillWidth: true
+ 
+diff --git a/src/kcms/desktop/virtualdesktopssettings.kcfg b/src/kcms/desktop/virtualdesktopssettings.kcfg
+index e4ac07f90a..f74da807ce 100644
+--- a/src/kcms/desktop/virtualdesktopssettings.kcfg
++++ b/src/kcms/desktop/virtualdesktopssettings.kcfg
+@@ -9,6 +9,10 @@
+       <label>Whether or not, we circle through the virtual desktop when moving from one to the next</label>
+       <default>false</default>
+     </entry>
++    <entry name="perOutputVirtualDesktops" key="PerOutputVirtualDesktops" type="bool">
++      <label>Whether virtual desktops are switched independently for each screen</label>
++      <default>false</default>
++    </entry>
+   </group>
+   <group name="Plugins">
+     <entry name="desktopChangeOsdEnabled" key="desktopchangeosdEnabled" type="bool">
+diff --git a/src/keyboard_layout_switching.cpp b/src/keyboard_layout_switching.cpp
+index e5545363e0..8f4b6f9cf4 100644
+--- a/src/keyboard_layout_switching.cpp
++++ b/src/keyboard_layout_switching.cpp
+@@ -98,6 +98,7 @@ VirtualDesktopPolicy::VirtualDesktopPolicy(Xkb *xkb, KeyboardLayout *layout, con
+ {
+     connect(VirtualDesktopManager::self(), &VirtualDesktopManager::currentChanged,
+             this, &VirtualDesktopPolicy::desktopChanged);
++    connect(workspace(), &Workspace::activeOutputChanged, this, &VirtualDesktopPolicy::desktopChanged);
+ 
+     connect(workspace()->sessionManager(), &SessionManager::prepareSessionSaveRequested, this, [this](const QString &name) {
+         clearLayouts();
+diff --git a/src/kwin.kcfg b/src/kwin.kcfg
+index b3deb52cc4..fbb4e614c4 100644
+--- a/src/kwin.kcfg
++++ b/src/kwin.kcfg
+@@ -106,6 +106,9 @@
+         <entry name="RollOverDesktops" type="Bool">
+             <default>false</default>
+         </entry>
++        <entry name="PerOutputVirtualDesktops" type="Bool">
++            <default>false</default>
++        </entry>
+         <entry name="FocusStealingPreventionLevel" type="Int">
+             <default>1</default>
+             <min>0</min>
+diff --git a/src/layers.cpp b/src/layers.cpp
+index 29f40865b8..e2e5b586e3 100644
+--- a/src/layers.cpp
++++ b/src/layers.cpp
+@@ -311,7 +311,7 @@ void Workspace::raiseOrLowerWindow(Window *window)
+         return;
+     }
+ 
+-    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop();
++    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop(window->output());
+     LogicalOutput *output = options->isSeparateScreenFocus() ? window->output() : nullptr;
+     Layer layer = computeLayer(window);
+ 
+diff --git a/src/options.cpp b/src/options.cpp
+index c2d610a223..4b67a3b0f0 100644
+--- a/src/options.cpp
++++ b/src/options.cpp
+@@ -48,6 +48,7 @@ Options::Options(QObject *parent)
+     , m_edgeBarrier(0)
+     , m_cornerBarrier(0)
+     , m_rollOverDesktops(false)
++    , m_perOutputVirtualDesktops(false)
+     , m_focusStealingPreventionLevel(FocusStealingPreventionLevel::None)
+     , m_killPingTimeout(0)
+     , m_xwaylandCrashPolicy(Options::defaultXwaylandCrashPolicy())
+@@ -309,6 +310,15 @@ void Options::setRollOverDesktops(bool rollOverDesktops)
+     Q_EMIT rollOverDesktopsChanged(m_rollOverDesktops);
+ }
+ 
++void Options::setPerOutputVirtualDesktops(bool perOutputVirtualDesktops)
++{
++    if (m_perOutputVirtualDesktops == perOutputVirtualDesktops) {
++        return;
++    }
++    m_perOutputVirtualDesktops = perOutputVirtualDesktops;
++    Q_EMIT perOutputVirtualDesktopsChanged(m_perOutputVirtualDesktops);
++}
++
+ void Options::setFocusStealingPreventionLevel(FocusStealingPreventionLevel focusStealingPreventionLevel)
+ {
+     if (!focusPolicyIsReasonable()) {
+@@ -709,6 +719,7 @@ void Options::syncFromKcfgc()
+     setNextFocusPrefersMouse(m_settings->nextFocusPrefersMouse());
+     setSeparateScreenFocus(m_settings->separateScreenFocus());
+     setRollOverDesktops(m_settings->rollOverDesktops());
++    setPerOutputVirtualDesktops(m_settings->perOutputVirtualDesktops());
+     setFocusStealingPreventionLevel(FocusStealingPreventionLevel(m_settings->focusStealingPreventionLevel()));
+     setActivationDesktopPolicy(m_settings->activationDesktopPolicy());
+     setXwaylandCrashPolicy(m_settings->xwaylandCrashPolicy());
+diff --git a/src/options.h b/src/options.h
+index b25a4fa717..8b92ee38f8 100644
+--- a/src/options.h
++++ b/src/options.h
+@@ -126,6 +126,10 @@ class KWIN_EXPORT Options : public QObject
+      * Whether or not we roll over to the other edge when switching desktops past the edge.
+      */
+     Q_PROPERTY(bool rollOverDesktops READ isRollOverDesktops WRITE setRollOverDesktops NOTIFY rollOverDesktopsChanged)
++    /**
++     * Whether virtual desktops are switched independently for each screen.
++     */
++    Q_PROPERTY(bool perOutputVirtualDesktops READ isPerOutputVirtualDesktops WRITE setPerOutputVirtualDesktops NOTIFY perOutputVirtualDesktopsChanged)
+     /**
+      * 0 - 4 , see Workspace::allowWindowActivation()
+      */
+@@ -377,6 +381,14 @@ public:
+         return m_rollOverDesktops;
+     }
+ 
++    /**
++     * Whether virtual desktops are switched independently for each screen.
++     */
++    bool isPerOutputVirtualDesktops() const
++    {
++        return m_perOutputVirtualDesktops;
++    }
++
+     /**
+      * Returns the focus stealing prevention level.
+      *
+@@ -658,6 +670,7 @@ public:
+     void setEdgeBarrier(int edgeBarrier);
+     void setCornerBarrier(bool cornerBarrier);
+     void setRollOverDesktops(bool rollOverDesktops);
++    void setPerOutputVirtualDesktops(bool perOutputVirtualDesktops);
+     void setFocusStealingPreventionLevel(FocusStealingPreventionLevel focusStealingPreventionLevel);
+     void setOperationTitlebarDblClick(WindowOperation operationTitlebarDblClick);
+     void setOperationMaxButtonLeftClick(WindowOperation op);
+@@ -830,6 +843,7 @@ Q_SIGNALS:
+     void edgeBarrierChanged();
+     void cornerBarrierChanged();
+     void rollOverDesktopsChanged(bool enabled);
++    void perOutputVirtualDesktopsChanged(bool enabled);
+     void focusStealingPreventionLevelChanged();
+     void operationTitlebarDblClickChanged();
+     void operationMaxButtonLeftClickChanged();
+@@ -888,6 +902,7 @@ private:
+     int m_edgeBarrier;
+     bool m_cornerBarrier;
+     bool m_rollOverDesktops;
++    bool m_perOutputVirtualDesktops;
+     FocusStealingPreventionLevel m_focusStealingPreventionLevel;
+     int m_killPingTimeout;
+     XwaylandCrashPolicy m_xwaylandCrashPolicy;
+diff --git a/src/placement.cpp b/src/placement.cpp
+index 5074285437..21434ad76d 100644
+--- a/src/placement.cpp
++++ b/src/placement.cpp
+@@ -170,7 +170,7 @@ std::optional<PlacementCommand> Placement::placeSmart(const Window *window, cons
+     long int overlap, min_overlap = 0;
+     int x_optimal, y_optimal;
+     int possible;
+-    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop() : window->desktops().front();
++    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop(window->output()) : window->desktops().front();
+ 
+     int cxl, cxr, cyt, cyb; // temp coords
+     int xl, xr, yt, yb; // temp coords
+@@ -533,7 +533,7 @@ RectF Placement::cascadeIfCovering(const Window *window, const RectF &geometry,
+     const QPointF offset = workspace()->cascadeOffset(area);
+     Q_ASSERT(!offset.isNull());
+ 
+-    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop() : window->desktops().front();
++    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop(window->output()) : window->desktops().front();
+ 
+     RectF possibleGeo = geometry;
+     bool noOverlap = false;
+@@ -801,7 +801,7 @@ qreal Workspace::packPositionLeft(const Window *window, qreal oldX, bool leftEdg
+     if (oldX <= newX) {
+         return oldX;
+     }
+-    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop() : window->desktops().front();
++    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop(window->output()) : window->desktops().front();
+     for (auto it = m_windows.constBegin(), end = m_windows.constEnd(); it != end; ++it) {
+         if (isIrrelevant(*it, window, desktop)) {
+             continue;
+@@ -828,7 +828,7 @@ qreal Workspace::packPositionRight(const Window *window, qreal oldX, bool rightE
+     if (oldX >= newX) {
+         return oldX;
+     }
+-    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop() : window->desktops().front();
++    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop(window->output()) : window->desktops().front();
+     for (auto it = m_windows.constBegin(), end = m_windows.constEnd(); it != end; ++it) {
+         if (isIrrelevant(*it, window, desktop)) {
+             continue;
+@@ -856,7 +856,7 @@ qreal Workspace::packPositionUp(const Window *window, qreal oldY, bool topEdge)
+     if (oldY <= newY) {
+         return oldY;
+     }
+-    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop() : window->desktops().front();
++    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop(window->output()) : window->desktops().front();
+     for (auto it = m_windows.constBegin(), end = m_windows.constEnd(); it != end; ++it) {
+         if (isIrrelevant(*it, window, desktop)) {
+             continue;
+@@ -883,7 +883,7 @@ qreal Workspace::packPositionDown(const Window *window, qreal oldY, bool bottomE
+     if (oldY >= newY) {
+         return oldY;
+     }
+-    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop() : window->desktops().front();
++    VirtualDesktop *const desktop = window->isOnCurrentDesktop() ? VirtualDesktopManager::self()->currentDesktop(window->output()) : window->desktops().front();
+     for (auto it = m_windows.constBegin(), end = m_windows.constEnd(); it != end; ++it) {
+         if (isIrrelevant(*it, window, desktop)) {
+             continue;
+diff --git a/src/plugins/dialogparent/package/contents/code/main.js b/src/plugins/dialogparent/package/contents/code/main.js
+index b6d20bd280..0f8d55ca6b 100644
+--- a/src/plugins/dialogparent/package/contents/code/main.js
++++ b/src/plugins/dialogparent/package/contents/code/main.js
+@@ -90,7 +90,7 @@ var dialogParentEffect = {
+         cancel(window.dialogParentAnimation);
+         delete window.dialogParentEffect;
+     },
+-    desktopChanged: function () {
++    desktopChanged: function (oldDesktop, newDesktop, withWindow, screen) {
+         "use strict";
+         // If there is an active full screen effect, then try smoothly dim/brighten
+         // the main windows. Keep in mind that in order for this to work properly, this
+@@ -103,6 +103,9 @@ var dialogParentEffect = {
+ 
+         const windows = effects.stackingOrder;
+         for (const window of windows) {
++            if (window.screen !== screen) {
++                continue;
++            }
+             dialogParentEffect.cancelAnimationInstant(window);
+             dialogParentEffect.restartAnimation(window);
+         }
+diff --git a/src/plugins/fadedesktop/package/contents/code/main.js b/src/plugins/fadedesktop/package/contents/code/main.js
+index ce186b3a65..f9c4cfc5c7 100644
+--- a/src/plugins/fadedesktop/package/contents/code/main.js
++++ b/src/plugins/fadedesktop/package/contents/code/main.js
+@@ -65,7 +65,7 @@ var fadeDesktopEffect = {
+             to: 0.0
+         });
+     },
+-    slotDesktopChanged: function (oldDesktop, newDesktop, movingWindow) {
++    slotDesktopChanged: function (oldDesktop, newDesktop, movingWindow, screen) {
+         if (effects.hasActiveFullScreenEffect && !effect.isActiveFullScreenEffect) {
+             return;
+         }
+@@ -80,6 +80,10 @@ var fadeDesktopEffect = {
+                 continue;
+             }
+ 
++            if (w.screen !== screen) {
++                continue;
++            }
++
+             // If the window is not on the old and the new desktop or it's
+             // on both of them, then don't animate it.
+             var onOldDesktop = w.isOnDesktop(oldDesktop);
+diff --git a/src/plugins/frozenapp/package/contents/code/main.js b/src/plugins/frozenapp/package/contents/code/main.js
+index 7ca4ac62dd..257529a69c 100644
+--- a/src/plugins/frozenapp/package/contents/code/main.js
++++ b/src/plugins/frozenapp/package/contents/code/main.js
+@@ -88,10 +88,15 @@ var frozenAppEffect = {
+             window.unresponsiveAnimation = undefined;
+         }
+     },
+-    desktopChanged: function () {
++    desktopChanged: function (oldDesktop, newDesktop, withWindow, screen) {
+         var windows = effects.stackingOrder;
+         for (var i = 0, length = windows.length; i < length; ++i) {
+             var window = windows[i];
++
++            if (window.screen !== screen) {
++                continue;
++            }
++
+             frozenAppEffect.cancelAnimation(window);
+             frozenAppEffect.restartAnimation(window);
+         }
+diff --git a/src/plugins/krunner-integration/windowsrunnerinterface.cpp b/src/plugins/krunner-integration/windowsrunnerinterface.cpp
+index cb03060507..c616a29b12 100644
+--- a/src/plugins/krunner-integration/windowsrunnerinterface.cpp
++++ b/src/plugins/krunner-integration/windowsrunnerinterface.cpp
+@@ -272,7 +272,7 @@ RemoteMatch WindowsRunner::windowsMatch(const Window *window, const WindowsRunne
+     const QList<VirtualDesktop *> desktops = window->desktops();
+     bool allDesktops = window->isOnAllDesktops();
+ 
+-    const VirtualDesktop *targetDesktop = VirtualDesktopManager::self()->currentDesktop();
++    const VirtualDesktop *targetDesktop = VirtualDesktopManager::self()->currentDesktop(window->output());
+     // Show on current desktop unless window is only attached to other desktop, in this case show on the first attached desktop
+     if (!allDesktops && !window->isOnCurrentDesktop() && !desktops.isEmpty()) {
+         targetDesktop = desktops.first();
+diff --git a/src/plugins/minimizeall/package/contents/code/main.js b/src/plugins/minimizeall/package/contents/code/main.js
+index b232fc01a4..9738d8b01b 100644
+--- a/src/plugins/minimizeall/package/contents/code/main.js
++++ b/src/plugins/minimizeall/package/contents/code/main.js
+@@ -11,7 +11,7 @@ var registeredBorders = [];
+ 
+ function isRelevant(window) {
+     return window.minimizable &&
+-        (!window.desktops.length || window.desktops.includes(workspace.currentDesktop)) &&
++        (!window.desktops.length || window.desktops.includes(workspace.currentDesktopForScreen(window.output))) &&
+         (!window.activities.length || window.activities.includes(workspace.currentActivity));
+ }
+ 
+diff --git a/src/plugins/overview/overvieweffect.cpp b/src/plugins/overview/overvieweffect.cpp
+index 4310fdcb4c..3336f1c156 100644
+--- a/src/plugins/overview/overvieweffect.cpp
++++ b/src/plugins/overview/overvieweffect.cpp
+@@ -105,17 +105,25 @@ OverviewEffect::OverviewEffect()
+     connect(m_gridState, &EffectTogglableState::inProgressChanged, this, &OverviewEffect::gridGestureInProgressChanged);
+     connect(m_gridState, &EffectTogglableState::partialActivationFactorChanged, this, &OverviewEffect::gridPartialActivationFactorChanged);
+ 
+-    connect(effects, &EffectsHandler::desktopChanging, this, [this](VirtualDesktop *old, QPointF desktopOffset, EffectWindow *with) {
+-        m_desktopOffset = desktopOffset;
+-        Q_EMIT desktopOffsetChanged();
++    connect(effects, &EffectsHandler::desktopChanging, this, [this](VirtualDesktop *old, QPointF desktopOffset, EffectWindow *, LogicalOutput *output) {
++        m_screenDesktopOffsets.insertOrAssign(output, desktopOffset);
++        Q_EMIT desktopOffsetChanged(output);
+     });
+-    connect(effects, &EffectsHandler::desktopChanged, this, [this](VirtualDesktop *old, VirtualDesktop *current, EffectWindow *with) {
+-        m_desktopOffset = QPointF(0, 0);
+-        Q_EMIT desktopOffsetChanged();
++    connect(effects, &EffectsHandler::desktopChanged, this, [this](KWin::VirtualDesktop *, KWin::VirtualDesktop *, EffectWindow *, KWin::LogicalOutput *output) {
++        m_screenDesktopOffsets.insertOrAssign(output, QPointF(0, 0));
++        Q_EMIT desktopOffsetChanged(output);
+     });
+     connect(effects, &EffectsHandler::desktopChangingCancelled, this, [this]() {
+-        m_desktopOffset = QPointF(0, 0);
+-        Q_EMIT desktopOffsetChanged();
++        m_screenDesktopOffsets.clear();
++        const auto screens = effects->screens();
++
++        for (LogicalOutput *output : screens) {
++            Q_EMIT desktopOffsetChanged(output);
++        }
++    });
++    connect(effects, &EffectsHandler::screenRemoved, this, [this](KWin::LogicalOutput *output) {
++        m_screenDesktopOffsets.remove(output);
++        Q_EMIT desktopOffsetChanged(output);
+     });
+ 
+     m_shutdownTimer->setSingleShot(true);
+@@ -262,9 +270,9 @@ bool OverviewEffect::gridGestureInProgress() const
+     return m_gridState->inProgress();
+ }
+ 
+-QPointF OverviewEffect::desktopOffset() const
++QPointF OverviewEffect::desktopOffsetForScreen(LogicalOutput *screen) const
+ {
+-    return m_desktopOffset;
++    return m_screenDesktopOffsets.value(screen, QPointF(0, 0));
+ }
+ 
+ bool OverviewEffect::ignoreMinimized() const
+diff --git a/src/plugins/overview/overvieweffect.h b/src/plugins/overview/overvieweffect.h
+index 99fbf7719b..ed366fba7b 100644
+--- a/src/plugins/overview/overvieweffect.h
++++ b/src/plugins/overview/overvieweffect.h
+@@ -28,7 +28,6 @@ class OverviewEffect : public QuickSceneEffect
+     Q_PROPERTY(bool transitionGestureInProgress READ transitionGestureInProgress NOTIFY transitionGestureInProgressChanged)
+     Q_PROPERTY(qreal gridPartialActivationFactor READ gridPartialActivationFactor NOTIFY gridPartialActivationFactorChanged)
+     Q_PROPERTY(bool gridGestureInProgress READ gridGestureInProgress NOTIFY gridGestureInProgressChanged)
+-    Q_PROPERTY(QPointF desktopOffset READ desktopOffset NOTIFY desktopOffsetChanged)
+     Q_PROPERTY(QString searchText MEMBER m_searchText NOTIFY searchTextChanged)
+ 
+ public:
+@@ -51,6 +50,7 @@ public:
+     qreal gridPartialActivationFactor() const;
+     bool gridGestureInProgress() const;
+     QPointF desktopOffset() const;
++    Q_INVOKABLE QPointF desktopOffsetForScreen(LogicalOutput *screen) const;
+ 
+     int requestedEffectChainPosition() const override;
+     bool borderActivated(ElectricBorder border) override;
+@@ -67,7 +67,7 @@ Q_SIGNALS:
+     void ignoreMinimizedChanged();
+     void filterWindowsChanged();
+     void organizedGridChanged();
+-    void desktopOffsetChanged();
++    void desktopOffsetChanged(KWin::LogicalOutput *screen);
+     void searchTextChanged();
+ 
+ public Q_SLOTS:
+@@ -92,8 +92,8 @@ private:
+     QList<QKeySequence> m_gridShortcut;
+     QList<ElectricBorder> m_borderActivate;
+     QList<ElectricBorder> m_gridBorderActivate;
++    QHash<LogicalOutput *, QPointF> m_screenDesktopOffsets;
+     QString m_searchText;
+-    QPointF m_desktopOffset;
+     bool m_filterWindows = true;
+     int m_animationDuration = 400;
+ };
+diff --git a/src/plugins/overview/qml/Main.qml b/src/plugins/overview/qml/Main.qml
+index ce021afe95..0b79d76faa 100644
+--- a/src/plugins/overview/qml/Main.qml
++++ b/src/plugins/overview/qml/Main.qml
+@@ -32,6 +32,8 @@ FocusScope {
+     property bool organized: false
+ 
+     property bool verticalDesktopBar: KWinComponents.Workspace.desktopGridHeight >= bar.desktopCount && KWinComponents.Workspace.desktopGridHeight != 1
++    property QtObject currentDesktop: KWinComponents.Workspace.currentDesktopForScreen(targetScreen)
++    property point targetScreenDesktopOffset: effect.desktopOffsetForScreen(targetScreen);
+ 
+     // The values of overviewVal and gridVal might not be 0 on startup,
+     // but we always want to animate from 0 to those values. So, we initially
+@@ -124,7 +126,7 @@ FocusScope {
+     }
+ 
+     function switchTo(desktop) {
+-        KWinComponents.Workspace.currentDesktop = desktop;
++        KWinComponents.Workspace.setCurrentDesktopForScreen(desktop, targetScreen);
+         effect.deactivate();
+     }
+ 
+@@ -171,7 +173,7 @@ FocusScope {
+         }
+         let newIndex = y * container.columns + x;
+ 
+-        KWinComponents.Workspace.currentDesktop = allDesktopHeaps.itemAt(newIndex).desktop
++        KWinComponents.Workspace.setCurrentDesktopForScreen(allDesktopHeaps.itemAt(newIndex).desktop, targetScreen);
+         allDesktopHeaps.itemAt(newIndex).nestedHeap.focus = true
+         allDesktopHeaps.itemAt(newIndex).selectLastItem(invertedDirection);
+         return true;
+@@ -248,7 +250,7 @@ FocusScope {
+         KWinComponents.DesktopBackground {
+             id: backgroundItem
+             activity: KWinComponents.Workspace.currentActivity
+-            desktop: KWinComponents.Workspace.currentDesktop
++            desktop: currentDesktop
+             outputName: targetScreen.name
+             visible: false
+         }
+@@ -297,7 +299,7 @@ FocusScope {
+             windowModel: stackModel
+             desktopModel: desktopModel
+             verticalDesktopBar: container.verticalDesktopBar
+-            selectedDesktop: KWinComponents.Workspace.currentDesktop
++            selectedDesktop: currentDesktop
+             heap: allDesktopHeaps.currentHeap
+         }
+     }
+@@ -425,7 +427,7 @@ FocusScope {
+ 
+                 required property QtObject desktop
+                 required property int index
+-                readonly property bool current: KWinComponents.Workspace.currentDesktop === desktop
++                readonly property bool current: currentDesktop === desktop
+                 readonly property bool nearCurrent: Math.abs(deltaColumn) <= 1 && Math.abs(deltaRow) <= 1
+                 readonly property var nestedHeap: heap
+ 
+@@ -437,14 +439,14 @@ FocusScope {
+                 property real column: index % columns
+                 // deltaX and deltaY are used to move all the desktops together to 1:1 animate the
+                 // switching between different desktops
+-                property real deltaX: (!current ? effect.desktopOffset.x :
+-                                       column == 0 ? Math.max(0, effect.desktopOffset.x) :
+-                                       column == columns - 1 ? Math.min(0, effect.desktopOffset.x) :
+-                                       effect.desktopOffset.x)
+-                property real deltaY: (!current ? effect.desktopOffset.y :
+-                                       row == 0 ? Math.max(0, effect.desktopOffset.y) :
+-                                       row == rows - 1 ? Math.min(0, effect.desktopOffset.y) :
+-                                       effect.desktopOffset.y)
++                property real deltaX: (!current ? targetScreenDesktopOffset.x :
++                                       column == 0 ? Math.max(0, targetScreenDesktopOffset.x) :
++                                       column == columns - 1 ? Math.min(0, targetScreenDesktopOffset.x) :
++                                           targetScreenDesktopOffset.x)
++                property real deltaY: (!current ? targetScreenDesktopOffset.y :
++                                       row == 0 ? Math.max(0, targetScreenDesktopOffset.y) :
++                                       row == rows - 1 ? Math.min(0, targetScreenDesktopOffset.y) :
++                                           targetScreenDesktopOffset.y)
+                 // deltaColumn and deltaRows are the difference between the column/row of this desktop
+                 // compared to the column/row of the active one
+                 property real deltaColumn: column - allDesktopHeaps.currentBackgroundItem.column - deltaX
+@@ -517,7 +519,7 @@ FocusScope {
+                         anchors.fill: parent
+                         anchors.margins: gridVal !== 0 ? Math.round(mainBackground.current * gridVal * (1.5 / gridScale.xScale)) : 0
+                         activity: KWinComponents.Workspace.currentActivity
+-                        desktop: KWinComponents.Workspace.currentDesktop
++                        desktop: currentDesktop
+                         outputName: targetScreen.name
+                         visible: false
+                     }
+@@ -583,7 +585,7 @@ FocusScope {
+                     TapHandler {
+                         acceptedButtons: Qt.LeftButton
+                         onTapped: {
+-                            KWinComponents.Workspace.currentDesktop = mainBackground.desktop;
++                            KWinComponents.Workspace.setCurrentDesktopForScreen(mainBackground.desktop, container.targetScreen);
+                             container.effect.deactivate();
+                         }
+                     }
+@@ -763,7 +765,7 @@ FocusScope {
+ 
+     Repeater {
+         model: KWinComponents.WindowFilterModel {
+-            desktop: KWinComponents.Workspace.currentDesktop
++            desktop: currentDesktop
+             screenName: targetScreen.name
+             windowModel: stackModel
+             windowType: KWinComponents.WindowFilterModel.Dock
+@@ -798,4 +800,26 @@ FocusScope {
+         container.verticalDesktopBar = container.verticalDesktopBar
+         organized = true
+     }
++
++    Connections {
++        target: effect
++        onDesktopOffsetChanged: (screen) => {
++            if (screen !== container.targetScreen) {
++                return;
++            }
++
++            container.targetScreenDesktopOffset = effect.desktopOffsetForScreen(screen);
++        }
++    }
++
++    Connections {
++        target: KWinComponents.Workspace
++        onCurrentDesktopChanged: (previous, current, screen) => {
++            if (screen !== container.targetScreen) {
++                return;
++            }
++
++            container.currentDesktop = current;
++        }
++    }
+ }
+diff --git a/src/plugins/tileseditor/qml/Main.qml b/src/plugins/tileseditor/qml/Main.qml
+index 5cd8137278..6bdcd3f62d 100644
+--- a/src/plugins/tileseditor/qml/Main.qml
++++ b/src/plugins/tileseditor/qml/Main.qml
+@@ -39,7 +39,8 @@ FocusScope {
+ 
+     property bool active: false
+ 
+-    readonly property QtObject rootTile: KWinComponents.Workspace.rootTile(root.targetScreen, KWinComponents.Workspace.currentDesktop)
++    property QtObject currentDesktop: KWinComponents.Workspace.currentDesktopForScreen(targetScreen)
++    readonly property QtObject rootTile: KWinComponents.Workspace.rootTile(root.targetScreen, currentDesktop)
+ 
+     Component.onCompleted: {
+         root.active = true;
+@@ -61,7 +62,7 @@ FocusScope {
+         Repeater {
+             model: KWinComponents.WindowFilterModel {
+                 activity: KWinComponents.Workspace.currentActivity
+-                desktop: KWinComponents.Workspace.currentDesktop
++                desktop: root.currentDesktop
+                 screenName: targetScreen.name
+                 windowModel: KWinComponents.WindowModel {}
+             }
+@@ -272,4 +273,14 @@ FocusScope {
+             }
+         }
+     }
++    Connections {
++        target: KWinComponents.Workspace
++        onCurrentDesktopChanged: (previous, current, screen) => {
++            if (screen !== root.targetScreen) {
++                return;
++            }
++
++            root.currentDesktop = current;
++        }
++    }
+ }
+diff --git a/src/plugins/translucency/package/contents/code/main.js b/src/plugins/translucency/package/contents/code/main.js
+index a743597e5b..f47e37a9f7 100644
+--- a/src/plugins/translucency/package/contents/code/main.js
++++ b/src/plugins/translucency/package/contents/code/main.js
+@@ -193,10 +193,13 @@ var translucencyEffect = {
+             window.translucencyInactiveAnimation = ids;
+         }
+     },
+-    desktopChanged: function () {
++    desktopChanged: function (oldDesktop, newDesktop, withWindow, screen) {
+         var i, windows;
+         windows = effects.stackingOrder;
+         for (i = 0; i < windows.length; i += 1) {
++            if (screen && windows[i].screen !== screen) {
++                continue;
++            }
+             translucencyEffect.cancelAnimations(windows[i]);
+             translucencyEffect.startAnimation(windows[i]);
+             if (windows[i] !== effects.activeWindow) {
+diff --git a/src/plugins/windowview/qml/Main.qml b/src/plugins/windowview/qml/Main.qml
+index 8e06733554..b3e0ff50a2 100644
+--- a/src/plugins/windowview/qml/Main.qml
++++ b/src/plugins/windowview/qml/Main.qml
+@@ -19,6 +19,7 @@ Item {
+ 
+     readonly property QtObject effect: KWinComponents.SceneView.effect
+     readonly property QtObject targetScreen: KWinComponents.SceneView.screen
++    property QtObject currentDesktop: KWinComponents.Workspace.currentDesktopForScreen(targetScreen)
+ 
+     property bool animationEnabled: false
+     property bool organized: false
+@@ -63,7 +64,7 @@ Item {
+ 
+     KWinComponents.DesktopBackground {
+         activity: KWinComponents.Workspace.currentActivity
+-        desktop: KWinComponents.Workspace.currentDesktop
++        desktop: currentDesktop
+         outputName: targetScreen.name
+ 
+         layer.enabled: true
+@@ -185,7 +186,7 @@ Item {
+                     switch (container.effect.mode) {
+                         case WindowView.ModeCurrentDesktop:
+                         case WindowView.ModeWindowClassCurrentDesktop:
+-                            return KWinComponents.Workspace.currentDesktop;
++                            return container.currentDesktop;
+                         default:
+                             return undefined;
+                     }
+@@ -239,7 +240,7 @@ Item {
+         asynchronous: true
+ 
+         model: KWinComponents.WindowFilterModel {
+-            desktop: KWinComponents.Workspace.currentDesktop
++            desktop: currentDesktop
+             screenName: targetScreen.name
+             windowModel: stackModel
+             windowType: KWinComponents.WindowFilterModel.Dock
+@@ -269,4 +270,15 @@ Item {
+     }
+ 
+     Component.onCompleted: start();
++
++    Connections {
++        target: KWinComponents.Workspace
++        onCurrentDesktopChanged: (previous, current, screen) => {
++            if (screen !== container.targetScreen) {
++                return;
++            }
++
++            container.currentDesktop = current;
++        }
++    }
+ }
+diff --git a/src/scene/windowitem.cpp b/src/scene/windowitem.cpp
+index f2a48f76cb..e74e4a4824 100644
+--- a/src/scene/windowitem.cpp
++++ b/src/scene/windowitem.cpp
+@@ -48,6 +48,7 @@ WindowItem::WindowItem(Window *window, Item *parent)
+     connect(window, &Window::activitiesChanged, this, &WindowItem::updateVisibility);
+     connect(window, &Window::desktopsChanged, this, &WindowItem::updateVisibility);
+     connect(window, &Window::offscreenRenderingChanged, this, &WindowItem::updateVisibility);
++    connect(window, &Window::outputChanged, this, &WindowItem::updateVisibility);
+     connect(waylandServer(), &WaylandServer::lockStateChanged, this, &WindowItem::updateVisibility);
+     connect(workspace(), &Workspace::currentActivityChanged, this, &WindowItem::updateVisibility);
+     connect(workspace(), &Workspace::currentDesktopChanged, this, &WindowItem::updateVisibility);
+@@ -162,6 +163,10 @@ bool WindowItem::computeVisibility() const
+     if (waylandServer()->isScreenLocked()) {
+         return m_window->isLockScreen() || m_window->isInputMethod() || m_window->isLockScreenOverlay();
+     }
++    // The window must remain visible during interactive/move resize, even if it's dragged to a desktop where it can't be due to window rules etc.
++    if (m_window->isInteractiveResize() || m_window->isInteractiveMove()) {
++        return true;
++    }
+     if (!m_window->isOnCurrentDesktop()) {
+         if (m_forceVisibleByDesktopCount == 0) {
+             return false;
+diff --git a/src/screenedge.cpp b/src/screenedge.cpp
+index 6fc4f7e99d..82ab025cd7 100644
+--- a/src/screenedge.cpp
++++ b/src/screenedge.cpp
+@@ -242,10 +242,11 @@ bool Edge::activatesForPointer() const
+     }
+     const bool isMovingWindow = Workspace::self()->moveResizeWindow() && !Workspace::self()->moveResizeWindow()->isInteractiveResize();
+     if (m_edges->isDesktopSwitching() || (m_edges->isDesktopSwitchingMovingClients() && isMovingWindow)) {
+-        const bool canSwitch = (isLeft() && VirtualDesktopManager::self()->toLeft(nullptr, options->isRollOverDesktops()) != VirtualDesktopManager::self()->currentDesktop())
+-            || (isRight() && VirtualDesktopManager::self()->toRight(nullptr, options->isRollOverDesktops()) != VirtualDesktopManager::self()->currentDesktop())
+-            || (isBottom() && VirtualDesktopManager::self()->below(nullptr, options->isRollOverDesktops()) != VirtualDesktopManager::self()->currentDesktop())
+-            || (isTop() && VirtualDesktopManager::self()->above(nullptr, options->isRollOverDesktops()) != VirtualDesktopManager::self()->currentDesktop());
++        VirtualDesktop *currentDesktop = VirtualDesktopManager::self()->currentDesktop(m_output);
++        const bool canSwitch = (isLeft() && VirtualDesktopManager::self()->toLeft(currentDesktop, options->isRollOverDesktops()) != currentDesktop)
++            || (isRight() && VirtualDesktopManager::self()->toRight(currentDesktop, options->isRollOverDesktops()) != currentDesktop)
++            || (isBottom() && VirtualDesktopManager::self()->below(currentDesktop, options->isRollOverDesktops()) != currentDesktop)
++            || (isTop() && VirtualDesktopManager::self()->above(currentDesktop, options->isRollOverDesktops()) != currentDesktop);
+         if (canSwitch) {
+             return true;
+         }
+@@ -471,7 +472,7 @@ void Edge::switchDesktop(const QPoint &cursorPos)
+ {
+     QPoint pos(cursorPos);
+     VirtualDesktopManager *vds = VirtualDesktopManager::self();
+-    VirtualDesktop *oldDesktop = vds->currentDesktop();
++    VirtualDesktop *oldDesktop = vds->currentDesktop(m_output);
+     VirtualDesktop *desktop = oldDesktop;
+     const int OFFSET = 2;
+     if (isLeft()) {
+@@ -507,8 +508,8 @@ void Edge::switchDesktop(const QPoint &cursorPos)
+             return;
+         }
+     }
+-    vds->setCurrent(desktop);
+-    if (vds->currentDesktop() != oldDesktop) {
++    vds->setCurrent(desktop, m_output);
++    if (vds->currentDesktop(m_output) != oldDesktop) {
+         m_pushBackBlocked = true;
+         input()->pointer()->warp(pos);
+         auto unblockPush = [this] {
+diff --git a/src/scripting/desktopbackgrounditem.cpp b/src/scripting/desktopbackgrounditem.cpp
+index f0a876bba1..c774b420cf 100644
+--- a/src/scripting/desktopbackgrounditem.cpp
++++ b/src/scripting/desktopbackgrounditem.cpp
+@@ -95,7 +95,7 @@ void DesktopBackgroundItem::updateWindow()
+ 
+     VirtualDesktop *desktop = m_desktop;
+     if (!desktop) {
+-        desktop = VirtualDesktopManager::self()->currentDesktop();
++        desktop = VirtualDesktopManager::self()->currentDesktop(m_output);
+     }
+ 
+     QString activity = m_activity;
+diff --git a/src/scripting/workspace_wrapper.cpp b/src/scripting/workspace_wrapper.cpp
+index 9277012e01..76810080cf 100644
+--- a/src/scripting/workspace_wrapper.cpp
++++ b/src/scripting/workspace_wrapper.cpp
+@@ -79,6 +79,33 @@ void WorkspaceWrapper::setCurrentDesktop(VirtualDesktop *desktop)
+     VirtualDesktopManager::self()->setCurrent(desktop);
+ }
+ 
++bool WorkspaceWrapper::virtualDesktopNavigationWrapsAround() const
++{
++    return VirtualDesktopManager::self()->isNavigationWrappingAround();
++}
++
++KWin::VirtualDesktop *WorkspaceWrapper::currentDesktopForScreen(KWin::LogicalOutput *output) const
++{
++    if (!output) {
++        qCWarning(KWIN_SCRIPTING) << "Invalid output passed to currentDesktopForScreen";
++        return nullptr;
++    }
++    return VirtualDesktopManager::self()->currentDesktop(output);
++}
++
++void WorkspaceWrapper::setCurrentDesktopForScreen(KWin::VirtualDesktop *desktop, KWin::LogicalOutput *output)
++{
++    if (!desktop) {
++        qCWarning(KWIN_SCRIPTING) << "Invalid desktop passed to setCurrentDesktopForScreen";
++        return;
++    }
++    if (!output) {
++        qCWarning(KWIN_SCRIPTING) << "Invalid output passed to setCurrentDesktopForScreen";
++        return;
++    }
++    VirtualDesktopManager::self()->setCurrent(desktop, output);
++}
++
+ Window *WorkspaceWrapper::activeWindow() const
+ {
+     return workspace()->activeWindow();
+@@ -100,7 +127,7 @@ void WorkspaceWrapper::setCurrentActivity(const QString &activity)
+ {
+ #if KWIN_BUILD_ACTIVITIES
+     if (Workspace::self()->activities()) {
+-        Workspace::self()->activities()->setCurrent(activity, nullptr);
++        Workspace::self()->activities()->setCurrent(activity, nullptr, nullptr);
+     }
+ #endif
+ }
+diff --git a/src/scripting/workspace_wrapper.h b/src/scripting/workspace_wrapper.h
+index 685f840431..190baa0c37 100644
+--- a/src/scripting/workspace_wrapper.h
++++ b/src/scripting/workspace_wrapper.h
+@@ -141,8 +141,10 @@ Q_SIGNALS:
+ 
+     /**
+      * This signal is emitted when the current virtual desktop changes.
++     *
++     * \a output The screen where the desktop was changed.
+      */
+-    void currentDesktopChanged(KWin::VirtualDesktop *previous);
++    void currentDesktopChanged(KWin::VirtualDesktop *previous, KWin::VirtualDesktop *current, KWin::LogicalOutput *output);
+ 
+     /**
+      * This signal is emitted when the cursor position changes.
+@@ -218,6 +220,25 @@ public:
+     VirtualDesktop *currentDesktop() const;
+     void setCurrentDesktop(VirtualDesktop *desktop);
+ 
++    bool virtualDesktopNavigationWrapsAround() const;
++
++    /*!
++     * \qmlmethod VirtualDesktop Workspace::currentDesktopForScreen(LogicalOutput output)
++     *
++     * Returns current desktop on screen given by \a output.
++     */
++    Q_INVOKABLE KWin::VirtualDesktop *currentDesktopForScreen(KWin::LogicalOutput *output) const;
++
++    /*!
++     * \qmlmethod void Workspace::setCurrentDesktopForScreen(VirtualDesktop desktop, LogicalOutput output)
++     *
++     * Sets current desktop on \a output.
++     */
++    Q_INVOKABLE void setCurrentDesktopForScreen(KWin::VirtualDesktop *desktop, KWin::LogicalOutput *output);
++
++    /*!
++     * \qmlmethod LogicalOutput Workspace::screenAt(point pos)
++     */
+     Q_INVOKABLE KWin::LogicalOutput *screenAt(const QPointF &pos) const;
+ 
+     /**
+diff --git a/src/tabbox/tabbox.cpp b/src/tabbox/tabbox.cpp
+index 81c2ddf7da..9eaffe907a 100644
+--- a/src/tabbox/tabbox.cpp
++++ b/src/tabbox/tabbox.cpp
+@@ -60,7 +60,7 @@ QString TabBoxHandlerImpl::desktopName(Window *client) const
+     if (!client->isOnAllDesktops()) {
+         return client->desktops().last()->name();
+     }
+-    return VirtualDesktopManager::self()->currentDesktop()->name();
++    return VirtualDesktopManager::self()->currentDesktop(client->output())->name();
+ }
+ 
+ Window *TabBoxHandlerImpl::nextClientFocusChain(Window *client) const
+@@ -828,7 +828,7 @@ void TabBox::CDEWalkThroughWindows(bool forward)
+             Workspace::self()->activateWindow(nc);
+         } else {
+             if (!nc->isOnCurrentDesktop()) {
+-                VirtualDesktopManager::self()->setCurrent(nc->desktops().constLast());
++                VirtualDesktopManager::self()->setCurrent(nc->desktops().constLast(), nc->output());
+             }
+             Workspace::self()->raiseWindow(nc);
+         }
+diff --git a/src/tiles/tile.cpp b/src/tiles/tile.cpp
+index a94e2005ce..18276f7fbf 100644
+--- a/src/tiles/tile.cpp
++++ b/src/tiles/tile.cpp
+@@ -73,7 +73,7 @@ VirtualDesktop *Tile::desktop() const
+ 
+ bool Tile::isActive() const
+ {
+-    return m_desktop == VirtualDesktopManager::self()->currentDesktop();
++    return m_desktop == VirtualDesktopManager::self()->currentDesktop(m_tiling->output());
+ }
+ 
+ bool Tile::supportsResizeGravity(Gravity gravity)
+diff --git a/src/tiles/tilemanager.cpp b/src/tiles/tilemanager.cpp
+index a397525625..f2a3cd8a48 100644
+--- a/src/tiles/tilemanager.cpp
++++ b/src/tiles/tilemanager.cpp
+@@ -29,7 +29,7 @@ namespace KWin
+ QDebug operator<<(QDebug debug, const TileManager *tileManager)
+ {
+     if (tileManager) {
+-        QList<Tile *> tiles({tileManager->rootTile(VirtualDesktopManager::self()->currentDesktop())});
++        QList<Tile *> tiles({tileManager->rootTile(VirtualDesktopManager::self()->currentDesktop(tileManager->output()))});
+         QList<Tile *> tilePath;
+         QString indent(QStringLiteral("|-"));
+         debug << tileManager->metaObject()->className() << '(' << static_cast<const void *>(tileManager) << ')' << '\n';
+@@ -86,7 +86,10 @@ TileManager::TileManager(LogicalOutput *parent)
+         delete m_quickRootTiles.take(desk);
+     });
+     connect(VirtualDesktopManager::self(), &VirtualDesktopManager::currentChanged,
+-            this, [this](VirtualDesktop *oldDesk, VirtualDesktop *newDesk) {
++            this, [this](VirtualDesktop *oldDesk, VirtualDesktop *newDesk, LogicalOutput *output) {
++        if (output != m_output) {
++            return;
++        }
+         Q_EMIT rootTileChanged(rootTile());
+         Q_EMIT modelChanged(model());
+     });
+@@ -119,12 +122,12 @@ RootTile *TileManager::rootTile(VirtualDesktop *desktop) const
+ 
+ RootTile *TileManager::rootTile() const
+ {
+-    return m_rootTiles.value(VirtualDesktopManager::self()->currentDesktop());
++    return m_rootTiles.value(VirtualDesktopManager::self()->currentDesktop(m_output));
+ }
+ 
+ QuickRootTile *TileManager::quickRootTile() const
+ {
+-    return m_quickRootTiles.value(VirtualDesktopManager::self()->currentDesktop());
++    return m_quickRootTiles.value(VirtualDesktopManager::self()->currentDesktop(m_output));
+ }
+ 
+ QuickRootTile *TileManager::quickRootTile(VirtualDesktop *desktop) const
+diff --git a/src/useractions.cpp b/src/useractions.cpp
+index 1c89c9705e..88b6ec40f7 100644
+--- a/src/useractions.cpp
++++ b/src/useractions.cpp
+@@ -1328,7 +1328,7 @@ void Workspace::slotWindowLower()
+                     requestFocus(next, false);
+                 }
+             } else {
+-                activateWindow(topWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop()));
++                activateWindow(topWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop(m_activeWindow->output())));
+             }
+         }
+     }
+@@ -1409,14 +1409,14 @@ void windowToDesktop(Window *window, VirtualDesktopManager::Direction direction)
+     VirtualDesktopManager *vds = VirtualDesktopManager::self();
+     Workspace *ws = Workspace::self();
+     // TODO: why is options->isRollOverDesktops() not honored?
+-    const auto desktop = vds->inDirection(nullptr, direction, true);
++    const auto desktop = vds->inDirection(vds->currentDesktop(window->output()), direction, true);
+     if (ws->moveResizeWindow()) {
+         if (ws->moveResizeWindow() == window) {
+-            vds->setCurrent(desktop);
++            vds->setCurrent(desktop, window->output());
+         }
+     } else {
+         ws->setMoveResizeWindow(window);
+-        vds->setCurrent(desktop);
++        vds->setCurrent(desktop, window->output());
+         ws->setMoveResizeWindow(nullptr);
+     }
+ }
+@@ -1455,18 +1455,18 @@ void activeWindowToDesktop(VirtualDesktopManager::Direction direction)
+ {
+     VirtualDesktopManager *vds = VirtualDesktopManager::self();
+     Workspace *ws = Workspace::self();
+-    VirtualDesktop *current = vds->currentDesktop();
++    VirtualDesktop *current = vds->currentDesktop(ws->activeWindow()->output());
+     VirtualDesktop *newCurrent = VirtualDesktopManager::self()->inDirection(current, direction, options->isRollOverDesktops());
+     if (newCurrent == current) {
+         return;
+     }
+     if (ws->moveResizeWindow()) {
+         if (ws->moveResizeWindow() == ws->activeWindow()) {
+-            vds->setCurrent(newCurrent);
++            vds->setCurrent(newCurrent, ws->activeWindow()->output());
+         }
+     } else {
+         ws->setMoveResizeWindow(ws->activeWindow());
+-        vds->setCurrent(newCurrent);
++        vds->setCurrent(newCurrent, ws->activeWindow()->output());
+         ws->setMoveResizeWindow(nullptr);
+     }
+ }
+@@ -1519,7 +1519,7 @@ void Workspace::switchWindow(Direction direction)
+         return;
+     }
+     Window *window = m_activeWindow;
+-    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop();
++    VirtualDesktop *desktop = VirtualDesktopManager::self()->currentDesktop(m_activeWindow->output());
+ 
+     // Center of the active window
+     QPoint curPos(window->x() + window->width() / 2, window->y() + window->height() / 2);
+diff --git a/src/virtualdesktops.cpp b/src/virtualdesktops.cpp
+index b92e089ec2..ce12a5af8c 100644
+--- a/src/virtualdesktops.cpp
++++ b/src/virtualdesktops.cpp
+@@ -8,8 +8,13 @@
+     SPDX-License-Identifier: GPL-2.0-or-later
+ */
+ #include "virtualdesktops.h"
++#if KWIN_BUILD_ACTIVITIES
++#include "activities.h"
++#endif
++#include "core/output.h"
+ #include "input.h"
+ #include "wayland/plasmavirtualdesktop.h"
++#include "workspace.h"
+ // KDE
+ #include <KConfigGroup>
+ #include <KGlobalAccel>
+@@ -72,6 +77,11 @@ void VirtualDesktopManager::setVirtualDesktopManagement(PlasmaVirtualDesktopMana
+         connect(pvd, &PlasmaVirtualDesktopInterface::activateRequested, this, [this, desktop]() {
+             setCurrent(desktop);
+         });
++        connect(pvd, &PlasmaVirtualDesktopInterface::enterOutputRequested, this, [this, desktop](const QString &outputName) {
++            if (LogicalOutput *output = workspace()->findOutput(outputName)) {
++                setCurrent(desktop, output);
++            }
++        });
+     };
+ 
+     connect(this, &VirtualDesktopManager::desktopAdded, m_virtualDesktopManagement, createPlasmaVirtualDesktop);
+@@ -99,19 +109,37 @@ void VirtualDesktopManager::setVirtualDesktopManagement(PlasmaVirtualDesktopMana
+         removeVirtualDesktop(id);
+     });
+ 
+-    connect(this, &VirtualDesktopManager::currentChanged, m_virtualDesktopManagement, [this]() {
+-        const QList<PlasmaVirtualDesktopInterface *> deskIfaces = m_virtualDesktopManagement->desktops();
+-        for (auto *deskInt : deskIfaces) {
+-            if (deskInt->id() == currentDesktop()->id()) {
+-                deskInt->setActive(true);
+-            } else {
+-                deskInt->setActive(false);
+-            }
++    connect(this, &VirtualDesktopManager::currentChanged, m_virtualDesktopManagement, [this](VirtualDesktop *oldDesktop, VirtualDesktop *newDesktop, LogicalOutput *output) {
++        m_virtualDesktopManagement->setActiveDesktopForOutput(oldDesktop->id(), newDesktop->id(), output);
++
++        if (output == workspace()->activeOutput()) {
++            updateLegacyPlasmaVirtualDesktops(newDesktop);
+         }
++
+         m_virtualDesktopManagement->scheduleDone();
+     });
++    connect(workspace(), &Workspace::activeOutputChanged, this, [this](LogicalOutput *output) {
++        updateLegacyPlasmaVirtualDesktops(currentDesktop(output));
++        m_virtualDesktopManagement->scheduleDone();
++    });
++
++    auto initNewOutput = [this](LogicalOutput *output) {
++        VirtualDesktop *desktop = initCurrentDesktopForOutput(output);
++        PlasmaVirtualDesktopInterface *pvd = m_virtualDesktopManagement->desktop(desktop->id());
++        pvd->enterOutput(output->name());
++        m_virtualDesktopManagement->scheduleDone();
++    };
++
++    connect(workspace(), &Workspace::outputAdded, this, initNewOutput);
++    connect(workspace(), &Workspace::outputRemoved, this, [this](LogicalOutput *output) {
++        VirtualDesktop *desktop = currentDesktop(output);
++        PlasmaVirtualDesktopInterface *pvd = m_virtualDesktopManagement->desktop(desktop->id());
++        pvd->leaveOutput(output->name());
++        m_currentDesktops.remove(output);
++    });
+ 
+     std::for_each(m_desktops.constBegin(), m_desktops.constEnd(), createPlasmaVirtualDesktop);
++    std::ranges::for_each(workspace()->outputs(), initNewOutput);
+ 
+     m_virtualDesktopManagement->setRows(rows());
+     m_virtualDesktopManagement->scheduleDone();
+@@ -277,9 +305,8 @@ void VirtualDesktopManager::moveTo(Direction direction, bool wrap)
+ 
+ VirtualDesktop *VirtualDesktopManager::above(VirtualDesktop *desktop, bool wrap) const
+ {
+-    Q_ASSERT(m_current);
+     if (!desktop) {
+-        desktop = m_current;
++        desktop = currentDesktop();
+     }
+     QPoint coords = m_grid.gridCoords(desktop);
+     Q_ASSERT(coords.x() >= 0);
+@@ -301,9 +328,8 @@ VirtualDesktop *VirtualDesktopManager::above(VirtualDesktop *desktop, bool wrap)
+ 
+ VirtualDesktop *VirtualDesktopManager::toRight(VirtualDesktop *desktop, bool wrap) const
+ {
+-    Q_ASSERT(m_current);
+     if (!desktop) {
+-        desktop = m_current;
++        desktop = currentDesktop();
+     }
+     QPoint coords = m_grid.gridCoords(desktop);
+     Q_ASSERT(coords.x() >= 0);
+@@ -325,9 +351,8 @@ VirtualDesktop *VirtualDesktopManager::toRight(VirtualDesktop *desktop, bool wra
+ 
+ VirtualDesktop *VirtualDesktopManager::below(VirtualDesktop *desktop, bool wrap) const
+ {
+-    Q_ASSERT(m_current);
+     if (!desktop) {
+-        desktop = m_current;
++        desktop = currentDesktop();
+     }
+     QPoint coords = m_grid.gridCoords(desktop);
+     Q_ASSERT(coords.x() >= 0);
+@@ -350,9 +375,8 @@ VirtualDesktop *VirtualDesktopManager::below(VirtualDesktop *desktop, bool wrap)
+ 
+ VirtualDesktop *VirtualDesktopManager::toLeft(VirtualDesktop *desktop, bool wrap) const
+ {
+-    Q_ASSERT(m_current);
+     if (!desktop) {
+-        desktop = m_current;
++        desktop = currentDesktop();
+     }
+     QPoint coords = m_grid.gridCoords(desktop);
+     Q_ASSERT(coords.x() >= 0);
+@@ -374,9 +398,8 @@ VirtualDesktop *VirtualDesktopManager::toLeft(VirtualDesktop *desktop, bool wrap
+ 
+ VirtualDesktop *VirtualDesktopManager::next(VirtualDesktop *desktop, bool wrap) const
+ {
+-    Q_ASSERT(m_current);
+     if (!desktop) {
+-        desktop = m_current;
++        desktop = currentDesktop();
+     }
+     auto it = std::find(m_desktops.begin(), m_desktops.end(), desktop);
+     Q_ASSERT(it != m_desktops.end());
+@@ -393,9 +416,8 @@ VirtualDesktop *VirtualDesktopManager::next(VirtualDesktop *desktop, bool wrap)
+ 
+ VirtualDesktop *VirtualDesktopManager::previous(VirtualDesktop *desktop, bool wrap) const
+ {
+-    Q_ASSERT(m_current);
+     if (!desktop) {
+-        desktop = m_current;
++        desktop = currentDesktop();
+     }
+     auto it = std::find(m_desktops.begin(), m_desktops.end(), desktop);
+     Q_ASSERT(it != m_desktops.end());
+@@ -521,9 +543,14 @@ void VirtualDesktopManager::removeVirtualDesktop(VirtualDesktop *desktop)
+ #endif
+     }
+ 
+-    if (m_current == desktop) {
+-        m_current = (i < m_desktops.count()) ? m_desktops.at(i) : m_desktops.constLast();
+-        Q_EMIT currentChanged(desktop, m_current);
++    VirtualDesktop *newDesktop = (i < m_desktops.count()) ? m_desktops.at(i) : m_desktops.constLast();
++
++    for (const auto &[output, currentDesktop] : m_currentDesktops.asKeyValueRange()) {
++        if (currentDesktop != desktop) {
++            continue;
++        }
++        currentDesktop = newDesktop;
++        Q_EMIT currentChanged(desktop, newDesktop, output);
+     }
+ 
+     updateLayout();
+@@ -570,35 +597,54 @@ void VirtualDesktopManager::moveVirtualDesktop(VirtualDesktop *desktop, int posi
+     Q_EMIT desktopMoved(desktop, position);
+ }
+ 
+-uint VirtualDesktopManager::current() const
++uint VirtualDesktopManager::current(LogicalOutput *output) const
+ {
+-    return m_current ? m_current->x11DesktopNumber() : 0;
++    VirtualDesktop *d = currentDesktop(output);
++    return d ? d->x11DesktopNumber() : 0;
+ }
+ 
+-VirtualDesktop *VirtualDesktopManager::currentDesktop() const
++VirtualDesktop *VirtualDesktopManager::currentDesktop(LogicalOutput *output) const
+ {
+-    return m_current;
++    if (!output) {
++        output = workspace()->activeOutput();
++    }
++    // Fallback is necessary because currentDesktop may be called before initialDesktopForNewOutput.
++    return m_currentDesktops.value(output, initialDesktopForNewOutput(output));
+ }
+ 
+-bool VirtualDesktopManager::setCurrent(uint newDesktop)
++bool VirtualDesktopManager::setCurrent(uint newDesktop, LogicalOutput *output)
+ {
+     if (newDesktop < 1 || newDesktop > count()) {
+         return false;
+     }
+-    auto d = desktopForX11Id(newDesktop);
++    VirtualDesktop *d = desktopForX11Id(newDesktop);
+     Q_ASSERT(d);
+-    return setCurrent(d);
++    return setCurrent(d, output);
+ }
+ 
+-bool VirtualDesktopManager::setCurrent(VirtualDesktop *newDesktop)
++bool VirtualDesktopManager::setCurrent(VirtualDesktop *newDesktop, LogicalOutput *output)
+ {
+     Q_ASSERT(newDesktop);
+-    if (m_current == newDesktop) {
++    if (!output) {
++        output = workspace()->activeOutput();
++    }
++    VirtualDesktop *oldDesktop = m_currentDesktops[output];
++    if (oldDesktop == newDesktop) {
+         return false;
+     }
+-    VirtualDesktop *oldDesktop = currentDesktop();
+-    m_current = newDesktop;
+-    Q_EMIT currentChanged(oldDesktop, newDesktop);
++    if (m_perOutputVirtualDesktops) {
++        m_currentDesktops[output] = newDesktop;
++        Q_EMIT currentChanged(oldDesktop, newDesktop, output);
++        return true;
++    }
++    for (const auto &[otherOutput, otherDesktop] : m_currentDesktops.asKeyValueRange()) {
++        if (otherDesktop == newDesktop) {
++            continue;
++        }
++        auto oldDesktop = otherDesktop;
++        otherDesktop = newDesktop;
++        Q_EMIT currentChanged(oldDesktop, newDesktop, otherOutput);
++    }
+     return true;
+ }
+ 
+@@ -615,10 +661,13 @@ void VirtualDesktopManager::setCount(uint count)
+     if ((uint)m_desktops.count() > count) {
+         const auto desktopsToRemove = m_desktops.mid(count);
+         m_desktops.resize(count);
+-        if (m_current && desktopsToRemove.contains(m_current)) {
+-            VirtualDesktop *oldCurrent = m_current;
+-            m_current = m_desktops.last();
+-            Q_EMIT currentChanged(oldCurrent, m_current);
++        for (const auto &[output, currentDesktop] : m_currentDesktops.asKeyValueRange()) {
++            if (!desktopsToRemove.contains(currentDesktop)) {
++                continue;
++            }
++            VirtualDesktop *oldDesktop = currentDesktop;
++            currentDesktop = m_desktops.last();
++            Q_EMIT currentChanged(oldDesktop, currentDesktop, output);
+         }
+         for (auto desktop : desktopsToRemove) {
+             Q_EMIT desktopRemoved(desktop);
+@@ -651,10 +700,6 @@ void VirtualDesktopManager::setCount(uint count)
+         }
+     }
+ 
+-    if (!m_current) {
+-        m_current = m_desktops.at(0);
+-    }
+-
+     updateLayout();
+     updateRootInfo();
+ 
+@@ -828,33 +873,44 @@ void VirtualDesktopManager::initShortcuts()
+     // These connections decide which desktop to end on after gesture ends
+     connect(m_swipeGestureReleasedX.get(), &QAction::triggered, this, &VirtualDesktopManager::gestureReleasedX);
+     connect(m_swipeGestureReleasedY.get(), &QAction::triggered, this, &VirtualDesktopManager::gestureReleasedY);
++    const auto emitCurrentChanging = [this]() {
++        if (m_perOutputVirtualDesktops) {
++            LogicalOutput *output = workspace()->activeOutput();
++            Q_EMIT currentChanging(currentDesktop(output), m_currentDesktopOffset, output);
++        } else {
++            const auto outputs = workspace()->outputs();
++            for (LogicalOutput *output : outputs) {
++                Q_EMIT currentChanging(currentDesktop(output), m_currentDesktopOffset, output);
++            }
++        }
++    };
+ 
+-    const auto left = [this](qreal cb) {
++    const auto left = [this, emitCurrentChanging](qreal cb) {
+         if (grid().width() > 1) {
+             m_currentDesktopOffset.setX(cb);
+-            Q_EMIT currentChanging(currentDesktop(), m_currentDesktopOffset);
++            emitCurrentChanging();
+         }
+     };
+-    const auto right = [this](qreal cb) {
++    const auto right = [this, emitCurrentChanging](qreal cb) {
+         if (grid().width() > 1) {
+             m_currentDesktopOffset.setX(-cb);
+-            Q_EMIT currentChanging(currentDesktop(), m_currentDesktopOffset);
++            emitCurrentChanging();
+         }
+     };
+     input()->registerTouchpadSwipeShortcut(SwipeDirection::Left, 3, m_swipeGestureReleasedX.get(), left);
+     input()->registerTouchpadSwipeShortcut(SwipeDirection::Right, 3, m_swipeGestureReleasedX.get(), right);
+     input()->registerTouchpadSwipeShortcut(SwipeDirection::Left, 4, m_swipeGestureReleasedX.get(), left);
+     input()->registerTouchpadSwipeShortcut(SwipeDirection::Right, 4, m_swipeGestureReleasedX.get(), right);
+-    input()->registerTouchpadSwipeShortcut(SwipeDirection::Down, 3, m_swipeGestureReleasedY.get(), [this](qreal cb) {
++    input()->registerTouchpadSwipeShortcut(SwipeDirection::Down, 3, m_swipeGestureReleasedY.get(), [this, emitCurrentChanging](qreal cb) {
+         if (grid().height() > 1) {
+             m_currentDesktopOffset.setY(-cb);
+-            Q_EMIT currentChanging(currentDesktop(), m_currentDesktopOffset);
++            emitCurrentChanging();
+         }
+     });
+-    input()->registerTouchpadSwipeShortcut(SwipeDirection::Up, 3, m_swipeGestureReleasedY.get(), [this](qreal cb) {
++    input()->registerTouchpadSwipeShortcut(SwipeDirection::Up, 3, m_swipeGestureReleasedY.get(), [this, emitCurrentChanging](qreal cb) {
+         if (grid().height() > 1) {
+             m_currentDesktopOffset.setY(cb);
+-            Q_EMIT currentChanging(currentDesktop(), m_currentDesktopOffset);
++            emitCurrentChanging();
+         }
+     });
+     input()->registerTouchscreenSwipeShortcut(SwipeDirection::Left, 3, m_swipeGestureReleasedX.get(), left);
+@@ -869,17 +925,18 @@ void VirtualDesktopManager::initShortcuts()
+ 
+ void VirtualDesktopManager::gestureReleasedY()
+ {
++    auto current = currentDesktop();
+     // Note that if desktop wrapping is disabled and there's no desktop above or below,
+     // above() and below() will return the current desktop.
+-    VirtualDesktop *target = m_current;
++    VirtualDesktop *target = current;
+     if (m_currentDesktopOffset.y() <= -GESTURE_SWITCH_THRESHOLD) {
+-        target = above(m_current, isNavigationWrappingAround());
++        target = above(current, isNavigationWrappingAround());
+     } else if (m_currentDesktopOffset.y() >= GESTURE_SWITCH_THRESHOLD) {
+-        target = below(m_current, isNavigationWrappingAround());
++        target = below(current, isNavigationWrappingAround());
+     }
+ 
+     // If the current desktop has not changed, consider that the gesture has been canceled.
+-    if (m_current != target) {
++    if (current != target) {
+         setCurrent(target);
+     } else {
+         Q_EMIT currentChangingCancelled();
+@@ -891,15 +948,16 @@ void VirtualDesktopManager::gestureReleasedX()
+ {
+     // Note that if desktop wrapping is disabled and there's no desktop to left or right,
+     // toLeft() and toRight() will return the current desktop.
+-    VirtualDesktop *target = m_current;
++    VirtualDesktop *current = currentDesktop();
++    VirtualDesktop *target = current;
+     if (m_currentDesktopOffset.x() <= -GESTURE_SWITCH_THRESHOLD) {
+-        target = toLeft(m_current, isNavigationWrappingAround());
++        target = toLeft(current, isNavigationWrappingAround());
+     } else if (m_currentDesktopOffset.x() >= GESTURE_SWITCH_THRESHOLD) {
+-        target = toRight(m_current, isNavigationWrappingAround());
++        target = toRight(current, isNavigationWrappingAround());
+     }
+ 
+     // If the current desktop has not changed, consider that the gesture has been canceled.
+-    if (m_current != target) {
++    if (current != target) {
+         setCurrent(target);
+     } else {
+         Q_EMIT currentChangingCancelled();
+@@ -921,6 +979,18 @@ void VirtualDesktopManager::initSwitchToShortcuts()
+     }
+ }
+ 
++void VirtualDesktopManager::updateLegacyPlasmaVirtualDesktops(VirtualDesktop *activeDesktop)
++{
++    const QList<PlasmaVirtualDesktopInterface *> deskIfaces = m_virtualDesktopManagement->desktops();
++    for (auto *deskInt : deskIfaces) {
++        if (deskInt->id() == activeDesktop->id()) {
++            deskInt->setActive(true);
++        } else {
++            deskInt->setActive(false);
++        }
++    }
++}
++
+ QAction *VirtualDesktopManager::addAction(const QString &name, const KLocalizedString &label, uint value, const QList<QKeySequence> &key, void (VirtualDesktopManager::*slot)())
+ {
+     QAction *a = new QAction(this);
+@@ -956,6 +1026,32 @@ QAction *VirtualDesktopManager::addAction(const QString &name, const QString &la
+     return a;
+ }
+ 
++VirtualDesktop *VirtualDesktopManager::initCurrentDesktopForOutput(LogicalOutput *output)
++{
++    VirtualDesktop *current = m_currentDesktops.value(output, nullptr);
++    if (current) {
++        return current;
++    }
++    return m_currentDesktops[output] = initialDesktopForNewOutput(output);
++}
++
++VirtualDesktop *VirtualDesktopManager::initialDesktopForNewOutput(LogicalOutput *output) const
++{
++    if (!m_perOutputVirtualDesktops && !m_currentDesktops.empty()) {
++        return *m_currentDesktops.begin();
++    }
++#if KWIN_BUILD_ACTIVITIES
++    if (workspace()->activities()) {
++        if (const auto desktopId = workspace()->activities()->findLastDesktopForOutput(output)) {
++            if (VirtualDesktop *desktop = desktopForId(desktopId.value())) {
++                return desktop;
++            }
++        }
++    }
++#endif
++    return m_desktops.first();
++}
++
+ void VirtualDesktopManager::slotSwitchTo()
+ {
+     QAction *act = qobject_cast<QAction *>(sender());
+@@ -979,6 +1075,22 @@ void VirtualDesktopManager::setNavigationWrappingAround(bool enabled)
+     Q_EMIT navigationWrappingAroundChanged();
+ }
+ 
++void VirtualDesktopManager::setPerOutputVirtualDesktops(bool enabled)
++{
++    if (enabled == m_perOutputVirtualDesktops) {
++        return;
++    }
++    m_perOutputVirtualDesktops = enabled;
++    if (!enabled) {
++        VirtualDesktop *newDesktop = currentDesktop(workspace()->activeOutput());
++        const auto outputs = workspace()->outputs();
++        for (const auto output : outputs) {
++            setCurrent(newDesktop, output);
++        }
++    }
++    Q_EMIT perOutputVirtualDesktopsChanged();
++}
++
+ void VirtualDesktopManager::slotDown()
+ {
+     moveTo(Direction::Down, isNavigationWrappingAround());
+diff --git a/src/virtualdesktops.h b/src/virtualdesktops.h
+index 73689827f5..3c73b00863 100644
+--- a/src/virtualdesktops.h
++++ b/src/virtualdesktops.h
+@@ -28,6 +28,7 @@ class QAction;
+ namespace KWin
+ {
+ 
++class LogicalOutput;
+ class Options;
+ class PlasmaVirtualDesktopManagementInterface;
+ 
+@@ -143,7 +144,7 @@ class KWIN_EXPORT VirtualDesktopManager : public QObject
+     Q_PROPERTY(uint count READ count WRITE setCount NOTIFY countChanged)
+ 
+     /**
+-     * The id of the virtual desktop which is currently in use.
++     * The id of the virtual desktop which is currently in use by the active output.
+      */
+     Q_PROPERTY(uint current READ current WRITE setCurrent NOTIFY currentChanged)
+ 
+@@ -151,6 +152,12 @@ class KWIN_EXPORT VirtualDesktopManager : public QObject
+      * Whether navigation in the desktop layout wraps around at the borders.
+      */
+     Q_PROPERTY(bool navigationWrappingAround READ isNavigationWrappingAround WRITE setNavigationWrappingAround NOTIFY navigationWrappingAroundChanged)
++
++    /**
++     * Whether virtual desktops are switched independently for each screen.
++     */
++    Q_PROPERTY(bool perOutputVirtualDesktops READ isPerOutputVirtualDesktops WRITE setPerOutputVirtualDesktops NOTIFY perOutputVirtualDesktopsChanged)
++
+ public:
+     ~VirtualDesktopManager() override;
+ 
+@@ -184,18 +191,20 @@ public:
+     uint rows() const;
+ 
+     /**
+-     * @returns The ID of the current desktop.
++     * @returns The ID of the current desktop on @a output.
++     * @param output The output for which to return the current desktop (default = active output)
+      * @see setCurrent
+      * @see currentChanged
+      */
+-    uint current() const;
++    uint current(LogicalOutput *output = nullptr) const;
+ 
+     /**
+-     * @returns The current desktop
++     * @returns The current desktop on @a output.
++     * @param output The output for which to return the current desktop (default = active output)
+      * @see setCurrent
+      * @see currentChanged
+      */
+-    VirtualDesktop *currentDesktop() const;
++    VirtualDesktop *currentDesktop(LogicalOutput *output = nullptr) const;
+ 
+     /**
+      * Moves to the desktop through the algorithm described by Direction.
+@@ -212,6 +221,13 @@ public:
+      */
+     bool isNavigationWrappingAround() const;
+ 
++    /**
++     * @returns @c true if virtual desktops are switched independently for each screen, @c false otherwise
++     * @see setPerOutputVirtualDesktops
++     * @see perOutputVirtualDesktopsChanged
++     */
++    bool isPerOutputVirtualDesktops() const;
++
+     /**
+      * @returns The layout aware virtual desktop grid used by this manager.
+      */
+@@ -340,22 +356,24 @@ public Q_SLOTS:
+     void setCount(uint count);
+ 
+     /**
+-     * Set the current desktop to @a current.
++     * Set the current desktop to @a current on @a output.
++     * @param output The output for which to return the current desktop (default = active output)
+      * @returns True on success, false otherwise.
+      * @see current
+      * @see currentChanged
+      * @see moveTo
+      */
+-    bool setCurrent(uint current);
++    bool setCurrent(uint current, LogicalOutput *output = nullptr);
+ 
+     /**
+-     * Set the current desktop to @a current.
++     * Set the current desktop to @a current on @a output.
++     * @param output The output for which to return the current desktop (default = active output)
+      * @returns True on success, false otherwise.
+      * @see current
+      * @see currentChanged
+      * @see moveTo
+      */
+-    bool setCurrent(VirtualDesktop *current);
++    bool setCurrent(VirtualDesktop *current, LogicalOutput *output = nullptr);
+ 
+     /**
+      * Updates the layout to a new number of rows. The number of columns will be calculated accordingly
+@@ -374,6 +392,13 @@ public Q_SLOTS:
+      */
+     void setNavigationWrappingAround(bool enabled);
+ 
++    /**
++     * @param enabled switching virtual desktops independently for each screen
++     * @see isPerOutputVirtualDesktops
++     * @see perOutputVirtualDesktopsChanged
++     */
++    void setPerOutputVirtualDesktops(bool enabled);
++
+     /**
+      * Loads number of desktops and names from configuration file
+      */
+@@ -421,8 +446,9 @@ Q_SIGNALS:
+      * Signal emitted whenever the current desktop changes.
+      * @param previousDesktop The virtual desktop changed from
+      * @param newDesktop The virtual desktop changed to
++     * @param output The affected output. If it affects multiple outputs, then a separate signal is emitted for each one.
+      */
+-    void currentChanged(KWin::VirtualDesktop *previousDesktop, KWin::VirtualDesktop *newDesktop);
++    void currentChanged(KWin::VirtualDesktop *previousDesktop, KWin::VirtualDesktop *newDesktop, KWin::LogicalOutput *output);
+ 
+     /**
+      * Signal emitted for realtime desktop switching animations.
+@@ -430,8 +456,13 @@ Q_SIGNALS:
+      * @param offset The current total change in desktop coordinate
+      * Offset x and y are negative if switching Left and Down.
+      * Example: x = 0.6 means 60% of the way to the desktop to the right.
++     * @param output The affected output. If it affects multiple outputs, then a separate signal is emitted for each one.
++     */
++    void currentChanging(KWin::VirtualDesktop *currentDesktop, QPointF offset, KWin::LogicalOutput *output);
++
++    /**
++     * Signal emitted when realtime desktop switching animation is cancelled. It applies to all outputs.
+      */
+-    void currentChanging(KWin::VirtualDesktop *currentDesktop, QPointF offset);
+     void currentChangingCancelled();
+ 
+     /**
+@@ -446,6 +477,11 @@ Q_SIGNALS:
+      */
+     void navigationWrappingAroundChanged();
+ 
++    /**
++     * Signal emitted whenever the perOutputVirtualDesktops property changes.
++     */
++    void perOutputVirtualDesktopsChanged();
++
+ private Q_SLOTS:
+     /**
+      * Common slot for all "Switch to Desktop n" shortcuts.
+@@ -500,6 +536,7 @@ private:
+      * Creates all the global keyboard shortcuts for "Switch To Desktop n" actions.
+      */
+     void initSwitchToShortcuts();
++    void updateLegacyPlasmaVirtualDesktops(VirtualDesktop *activeDesktop);
+ 
+     /**
+      * Creates an action and connects it to the @p slot in this Manager. This method is
+@@ -528,10 +565,14 @@ private:
+      */
+     QAction *addAction(const QString &name, const QString &label, const QKeySequence &key, void (VirtualDesktopManager::*slot)());
+ 
++    VirtualDesktop *initCurrentDesktopForOutput(LogicalOutput *output);
++    VirtualDesktop *initialDesktopForNewOutput(LogicalOutput *output) const;
++
+     QList<VirtualDesktop *> m_desktops;
+-    QPointer<VirtualDesktop> m_current;
++    QHash<LogicalOutput *, VirtualDesktop *> m_currentDesktops;
+     quint32 m_rows = 2;
+     bool m_navigationWrapsAround;
++    bool m_perOutputVirtualDesktops = false;
+     VirtualDesktopGrid m_grid;
+     // TODO: QPointer
+ #if KWIN_BUILD_X11
+@@ -577,6 +618,11 @@ inline bool VirtualDesktopManager::isNavigationWrappingAround() const
+     return m_navigationWrapsAround;
+ }
+ 
++inline bool VirtualDesktopManager::isPerOutputVirtualDesktops() const
++{
++    return m_perOutputVirtualDesktops;
++}
++
+ inline void VirtualDesktopManager::setConfig(KSharedConfig::Ptr config)
+ {
+     m_config = std::move(config);
+diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt
+index 9314a5c475..4249c62c62 100644
+--- a/src/wayland/CMakeLists.txt
++++ b/src/wayland/CMakeLists.txt
+@@ -25,7 +25,7 @@ ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml
+         ${PLASMA_WAYLAND_PROTOCOLS_DIR}/kde-output-order-v1.xml
+         ${PLASMA_WAYLAND_PROTOCOLS_DIR}/kde-screen-edge-v1.xml
+         ${PLASMA_WAYLAND_PROTOCOLS_DIR}/keystate.xml
+-        ${PLASMA_WAYLAND_PROTOCOLS_DIR}/org-kde-plasma-virtual-desktop.xml
++        ${CMAKE_CURRENT_SOURCE_DIR}/org-kde-plasma-virtual-desktop.xml
+         ${PLASMA_WAYLAND_PROTOCOLS_DIR}/plasma-shell.xml
+         ${PLASMA_WAYLAND_PROTOCOLS_DIR}/plasma-window-management.xml
+         ${PLASMA_WAYLAND_PROTOCOLS_DIR}/server-decoration-palette.xml
+diff --git a/src/wayland/org-kde-plasma-virtual-desktop.xml b/src/wayland/org-kde-plasma-virtual-desktop.xml
+new file mode 100644
+index 0000000000..0e686a9a4b
+--- /dev/null
++++ b/src/wayland/org-kde-plasma-virtual-desktop.xml
+@@ -0,0 +1,144 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="org_kde_plasma_virtual_desktop">
++  <copyright><![CDATA[
++    SPDX-FileCopyrightText: 2018 Marco Martin
++
++    SPDX-License-Identifier: LGPL-2.1-or-later
++  ]]></copyright>
++
++<interface name="org_kde_plasma_virtual_desktop_management" version="4">
++    <request name="get_virtual_desktop">
++        <description summary="get the org_kde_plasma_virtual_desktop interface for a desktop">
++            Given the id of a particular virtual desktop, get the corresponding org_kde_plasma_virtual_desktop which represents only the desktop with that id.
++
++            Warning! The protocol described in this file is a desktop environment
++            implementation detail. Regular clients must not use this protocol.
++            Backward incompatible changes may be added without bumping the major
++            version of the extension.
++        </description>
++        <arg name="id" type="new_id" interface="org_kde_plasma_virtual_desktop"/>
++        <arg name="desktop_id" type="string" summary="Unique id of the desktop"/>
++    </request>
++
++    <request name="request_create_virtual_desktop">
++        <description summary="ask for the creation of a new desktop at a specified position">
++            Ask the server to create a new virtual desktop, and position it at a specified position. If the position is zero or less, it will be positioned at the beginning, if the position is the count or more, it will be positioned at the end.
++        </description>
++        <arg name="name" type="string" summary="The user readable name we want for the desktop"/>
++        <arg name="position" type="uint" summary="The position we want for the desktop"/>
++    </request>
++
++    <request name="request_remove_virtual_desktop">
++        <description summary="ask for a desktop removal identified by id">
++            Ask the server to get rid of a virtual desktop, the server may or may not acconsent to the request.
++        </description>
++        <arg name="desktop_id" type="string" summary="Unique id of the desktop"/>
++    </request>
++
++    <event name="desktop_created">
++        <description summary="Emitted when a new desktop has been created"></description>
++        <arg name="desktop_id" type="string" summary="Unique id of the desktop"/>
++        <arg name="position" type="uint" summary="Position of this desktop, to ensure the client and the server will see desktops in the same order"/>
++    </event>
++
++    <!--TODO: maybe the removed signal of the desktop object is enough?-->
++    <event name="desktop_removed">
++        <description summary="Emitted when a desktop has been removed"></description>
++        <arg name="desktop_id" type="string" summary="Unique id of the desktop"/>
++    </event>
++
++    <event name="done">
++        <description summary="sent all information about desktops">
++            This event is sent after all other properties have been sent after
++            binding to the desktop manager global and after all changes to
++            org_kde_plasma_virtual_desktop_management and org_kde_plasma_virtual_desktop
++            properties have been sent.
++
++            This allows changes to org_kde_plasma_virtual_desktop_management and
++            org_kde_plasma_virtual_desktop properties to be seen as atomic, even
++            if they happen via multiple events.
++        </description>
++    </event>
++
++    <event name="rows" since="2">
++        <arg name="rows" type="uint" summary="Number of rows the virtual desktops are laid out into."/>
++    </event>
++</interface>
++
++<interface name="org_kde_plasma_virtual_desktop" version="4">
++    <request name="request_activate">
++        <description summary="Requests this desktop to be activated">
++            Request the server to set the status of this desktop to active: The server is free to consent or deny the request. This will be the new "current" virtual desktop of the system.
++        </description>
++    </request>
++
++    <event name="desktop_id">
++        <description summary="The desktop got an id">
++            The format of the id is decided by the compositor implementation. A desktop id univocally identifies a virtual desktop and must be guaranteed to never exist two desktops with the same id. The format of the string id is up to the server implementation.
++        </description>
++        <arg name="desktop_id" type="string" summary="Unique id of the desktop"/>
++    </event>
++
++    <event name="name">
++        <arg name="name" type="string" summary="User readable descriptive name for the desktop"/>
++    </event>
++
++    <event name="activated">
++        <description summary="The desktop has been activated">
++            The desktop will be the new "current" desktop of the system. The server may support either one virtual desktop active at a time, or other combinations such as one virtual desktop active per screen.
++            Windows associated to this virtual desktop will be shown.
++        </description>
++    </event>
++
++    <event name="deactivated">
++        <description summary="This desktop is no longer active">
++            Windows that were associated only to this desktop will be hidden.
++        </description>
++    </event>
++
++    <event name="done">
++        <description summary="sent all information about desktops">
++            This event is sent after all other properties has been
++            sent after binding to the desktop object and after any
++            other property changes done after that. This allows
++            changes to the org_kde_plasma_virtual_desktop properties to be seen as
++            atomic, even if they happen via multiple events.
++        </description>
++    </event>
++
++    <event name="removed">
++        <description summary="This desktop has been removed">
++            This virtual desktop has just been removed by the server:
++            All windows will lose the association to this desktop.
++        </description>
++    </event>
++
++    <event name="position" since="3">
++        <description summary="virtual desktop position">
++            The position of the virtual desktop in the desktop list. The virtual
++            desktop position is in the [0, N - 1] range, where N is the number of
++            virtual desktops.
++        </description>
++        <arg name="index" type="uint" summary="virtual desktop position"/>
++    </event>
++
++    <event name="output_entered" since="4">
++        <description summary="This desktop became active on an output">
++            This event is sent when the desktop becomes active on an output. The desktop can be active on multiple
++            outputs simultaneously. Each output has exactly one active desktop at a time (the one that entered it last).
++        </description>
++        <arg name="output_name" type="string" summary="name of the output" />
++    </event>
++
++    <request name="request_enter_output" since="4">
++        <description summary="Requests this desktop to be activated on an output">
++            Request the server to activate the desktop on a given output.
++            The server may deny the request.
++            If the request is granted, the server will deactivate the previous desktop on the output.
++            The server may activate the desktop on other outputs as well.
++        </description>
++        <arg name="output_name" type="string" summary="name of the output" />
++    </request>
++</interface>
++
++</protocol>
+diff --git a/src/wayland/plasmavirtualdesktop.cpp b/src/wayland/plasmavirtualdesktop.cpp
+index 9c90574d0e..b71664038f 100644
+--- a/src/wayland/plasmavirtualdesktop.cpp
++++ b/src/wayland/plasmavirtualdesktop.cpp
+@@ -5,9 +5,11 @@
+ */
+ #include "plasmavirtualdesktop.h"
+ #include "display.h"
++#include "output.h"
+ #include "wayland/quirks.h"
+ 
+ #include <QDebug>
++#include <QSet>
+ #include <QTimer>
+ 
+ #include <qwayland-server-org-kde-plasma-virtual-desktop.h>
+@@ -15,7 +17,8 @@
+ 
+ namespace KWin
+ {
+-static const quint32 s_version = 3;
++
++static const quint32 s_version = 4;
+ 
+ class PlasmaVirtualDesktopInterfacePrivate : public QtWaylandServer::org_kde_plasma_virtual_desktop
+ {
+@@ -28,10 +31,12 @@ public:
+     QString name;
+     uint position = 0;
+     bool active = false;
++    QSet<QString> activeOnOutputs;
+ 
+ protected:
+     void org_kde_plasma_virtual_desktop_bind_resource(Resource *resource) override;
+     void org_kde_plasma_virtual_desktop_request_activate(Resource *resource) override;
++    void org_kde_plasma_virtual_desktop_request_enter_output(Resource *resource, const QString &output_name) override;
+ };
+ 
+ class PlasmaVirtualDesktopManagementInterfacePrivate : public QtWaylandServer::org_kde_plasma_virtual_desktop_management
+@@ -211,6 +216,19 @@ void PlasmaVirtualDesktopManagementInterface::removeDesktop(const QString &id)
+     }
+ }
+ 
++void PlasmaVirtualDesktopManagementInterface::setActiveDesktopForOutput(const QString &previousDesktopId, const QString &activeDesktopId, LogicalOutput *output)
++{
++    PlasmaVirtualDesktopInterface *activeDesktop = desktop(activeDesktopId);
++    if (activeDesktop) {
++        activeDesktop->sendOutputEntered(output->name());
++    }
++
++    PlasmaVirtualDesktopInterface *previousDesktop = desktop(previousDesktopId);
++    if (previousDesktop) {
++        previousDesktop->leaveOutput(output->name());
++    }
++}
++
+ QList<PlasmaVirtualDesktopInterface *> PlasmaVirtualDesktopManagementInterface::desktops() const
+ {
+     return d->desktops;
+@@ -228,6 +246,11 @@ void PlasmaVirtualDesktopInterfacePrivate::org_kde_plasma_virtual_desktop_reques
+     Q_EMIT q->activateRequested();
+ }
+ 
++void PlasmaVirtualDesktopInterfacePrivate::org_kde_plasma_virtual_desktop_request_enter_output(Resource *resource, const QString &output_name)
++{
++    Q_EMIT q->enterOutputRequested(output_name);
++}
++
+ PlasmaVirtualDesktopInterfacePrivate::PlasmaVirtualDesktopInterfacePrivate(PlasmaVirtualDesktopInterface *q)
+     : QtWaylandServer::org_kde_plasma_virtual_desktop()
+     , q(q)
+@@ -259,6 +282,12 @@ void PlasmaVirtualDesktopInterfacePrivate::org_kde_plasma_virtual_desktop_bind_r
+         send_position(resource->handle, position);
+     }
+ 
++    if (resource->version() >= ORG_KDE_PLASMA_VIRTUAL_DESKTOP_OUTPUT_ENTERED_SINCE_VERSION) {
++        for (const auto &outputName : activeOnOutputs) {
++            send_output_entered(resource->handle, outputName);
++        }
++    }
++
+     send_done(resource->handle);
+ }
+ 
+@@ -341,6 +370,22 @@ uint PlasmaVirtualDesktopInterface::position() const
+     return d->position;
+ }
+ 
++void PlasmaVirtualDesktopInterface::enterOutput(const QString &outputName)
++{
++    d->activeOnOutputs.insert(outputName);
++    const auto clientResources = d->resourceMap();
++    for (auto resource : clientResources) {
++        if (resource->version() >= ORG_KDE_PLASMA_VIRTUAL_DESKTOP_OUTPUT_ENTERED_SINCE_VERSION) {
++            d->send_output_entered(resource->handle, outputName);
++        }
++    }
++}
++
++void PlasmaVirtualDesktopInterface::leaveOutput(const QString &outputName)
++{
++    d->activeOnOutputs.remove(outputName);
++}
++
+ void PlasmaVirtualDesktopInterface::sendDone()
+ {
+     const auto clientResources = d->resourceMap();
+diff --git a/src/wayland/plasmavirtualdesktop.h b/src/wayland/plasmavirtualdesktop.h
+index 42da075edd..295cc1bfe0 100644
+--- a/src/wayland/plasmavirtualdesktop.h
++++ b/src/wayland/plasmavirtualdesktop.h
+@@ -13,6 +13,7 @@
+ namespace KWin
+ {
+ class Display;
++class LogicalOutput;
+ class PlasmaVirtualDesktopInterface;
+ class PlasmaVirtualDesktopInterfacePrivate;
+ class PlasmaVirtualDesktopManagementInterfacePrivate;
+@@ -57,6 +58,8 @@ public:
+      */
+     void removeDesktop(const QString &id);
+ 
++    void setActiveDesktopForOutput(const QString &previousDesktopId, const QString &activeDesktopId, LogicalOutput *output);
++
+     /**
+      * @returns All the desktops present.
+      */
+@@ -135,6 +138,9 @@ public:
+      */
+     uint position() const;
+ 
++    void enterOutput(const QString &outputName);
++    void leaveOutput(const QString &outputName);
++
+     /**
+      * Inform the clients that all the properties have been sent, and
+      * their client-side representation is complete.
+@@ -148,6 +154,12 @@ Q_SIGNALS:
+      */
+     void activateRequested();
+ 
++    /**
++     * Emitted when the client asked to activate this desktop on given output.
++     * It's the decision of the server whether to perform the activation or not.
++     */
++    void enterOutputRequested(const QString &outputName);
++
+ private:
+     PlasmaVirtualDesktopInterface();
+     friend class PlasmaVirtualDesktopManagementInterface;
+diff --git a/src/waylandwindow.cpp b/src/waylandwindow.cpp
+index c1627acafe..16c3893ec8 100644
+--- a/src/waylandwindow.cpp
++++ b/src/waylandwindow.cpp
+@@ -215,7 +215,7 @@ void WaylandWindow::updateGeometry(const RectF &rect)
+     const RectF oldClientGeometry = m_clientGeometry;
+     const RectF oldFrameGeometry = m_frameGeometry;
+     const RectF oldBufferGeometry = m_bufferGeometry;
+-    const LogicalOutput *oldOutput = m_output;
++    LogicalOutput *oldOutput = m_output;
+ 
+     m_clientGeometry = frameRectToClientRect(rect);
+     m_frameGeometry = rect;
+@@ -250,7 +250,7 @@ void WaylandWindow::updateGeometry(const RectF &rect)
+         Q_EMIT frameGeometryChanged(oldFrameGeometry);
+     }
+     if (oldOutput != m_output) {
+-        Q_EMIT outputChanged();
++        Q_EMIT outputChanged(oldOutput);
+     }
+ }
+ 
+diff --git a/src/window.cpp b/src/window.cpp
+index 8dd5e314cb..31ea0c3e9d 100644
+--- a/src/window.cpp
++++ b/src/window.cpp
+@@ -234,8 +234,9 @@ LogicalOutput *Window::output() const
+ void Window::setOutput(LogicalOutput *output)
+ {
+     if (m_output != output) {
++        LogicalOutput *oldOutput = m_output;
+         m_output = output;
+-        Q_EMIT outputChanged();
++        Q_EMIT outputChanged(oldOutput);
+     }
+ }
+ 
+@@ -672,7 +673,7 @@ void Window::autoRaise()
+ bool Window::isMostRecentlyRaised() const
+ {
+     // The last window in the unconstrained stacking order is the most recently raised one.
+-    return workspace()->topWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop(), nullptr, true, false) == this;
++    return workspace()->topWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop(output()), nullptr, true, false) == this;
+ }
+ 
+ bool Window::wantsTabFocus() const
+@@ -798,7 +799,7 @@ void Window::setOnAllDesktops(bool b)
+     if (b) {
+         setDesktops({});
+     } else {
+-        setDesktops({VirtualDesktopManager::self()->currentDesktop()});
++        setDesktops({VirtualDesktopManager::self()->currentDesktop(output())});
+     }
+ }
+ 
+@@ -827,7 +828,7 @@ bool Window::isOnDesktop(VirtualDesktop *desktop) const
+ 
+ bool Window::isOnCurrentDesktop() const
+ {
+-    return isOnDesktop(VirtualDesktopManager::self()->currentDesktop());
++    return isOnDesktop(VirtualDesktopManager::self()->currentDesktop(output()));
+ }
+ 
+ Qt::Edge Window::titlebarPosition() const
+@@ -1064,6 +1065,7 @@ bool Window::startInteractiveMoveResize()
+ 
+     setInteractiveMoveResize(true);
+     workspace()->setMoveResizeWindow(this);
++    connect(this, &Window::outputChanged, this, &Window::finishInteractiveOutputChange);
+ 
+     m_interactiveMoveResize.initialGeometry = moveResizeGeometry();
+     m_interactiveMoveResize.initialOutputId = moveResizeOutput()->uuid();
+@@ -1084,6 +1086,7 @@ bool Window::startInteractiveMoveResize()
+ 
+ void Window::finishInteractiveMoveResize(bool cancel)
+ {
++    LogicalOutput *oldOutput = m_output;
+     const bool wasMove = isInteractiveMove();
+     leaveInteractiveMoveResize();
+ 
+@@ -1097,6 +1100,7 @@ void Window::finishInteractiveMoveResize(bool cancel)
+             setQuickTileMode(m_interactiveMoveResize.initialQuickTileMode, m_interactiveMoveResize.initialGeometry.center());
+             setGeometryRestore(m_interactiveMoveResize.initialGeometryRestore);
+         }
++        finishInteractiveOutputChange(oldOutput);
+     } else if (moveResizeOutput()->uuid() != m_interactiveMoveResize.initialOutputId) {
+         sendToOutput(moveResizeOutput()); // checks rule validity
+         const RectF oldScreenArea = m_interactiveMoveResize.initialScreenArea;
+@@ -2418,6 +2422,7 @@ void Window::updateCursor()
+ 
+ void Window::leaveInteractiveMoveResize()
+ {
++    disconnect(this, &Window::outputChanged, this, &Window::finishInteractiveOutputChange);
+     workspace()->setMoveResizeWindow(nullptr);
+     setInteractiveMoveResize(false);
+     if (workspace()->screenEdges()->isDesktopSwitchingMovingClients()) {
+@@ -2882,7 +2887,7 @@ void Window::pointerEnterEvent(const QPointF &globalPos)
+         return;
+     }
+ 
+-    if (options->isAutoRaise() && !isDesktop() && !isDock() && workspace()->focusChangeEnabled() && globalPos != workspace()->focusMousePosition() && workspace()->topWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop(), options->isSeparateScreenFocus() ? output() : nullptr) != this) {
++    if (options->isAutoRaise() && !isDesktop() && !isDock() && workspace()->focusChangeEnabled() && globalPos != workspace()->focusMousePosition() && workspace()->topWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop(output()), options->isSeparateScreenFocus() ? output() : nullptr) != this) {
+         startAutoRaise();
+     }
+ 
+@@ -3936,6 +3941,7 @@ void Window::sendToOutput(LogicalOutput *newOutput)
+         return;
+     }
+ 
++    LogicalOutput *oldOutput = m_output;
+     const RectF oldGeom = moveResizeGeometry();
+     const RectF oldScreenArea = workspace()->clientArea(MaximizeArea, this, moveResizeOutput());
+     const RectF screenArea = workspace()->clientArea(MaximizeArea, this, newOutput);
+@@ -3961,6 +3967,7 @@ void Window::sendToOutput(LogicalOutput *newOutput)
+     for (auto it = tso.constBegin(), end = tso.constEnd(); it != end; ++it) {
+         (*it)->sendToOutput(newOutput);
+     }
++    finishInteractiveOutputChange(oldOutput);
+ }
+ 
+ void Window::checkWorkspacePosition(RectF oldGeometry, const VirtualDesktop *oldDesktop, LogicalOutput *oldOutput)
+@@ -4712,6 +4719,37 @@ void Window::setDescription(const QString &description)
+     }
+ }
+ 
++void Window::finishInteractiveOutputChange(LogicalOutput *oldOutput)
++{
++    // We want to preserve the window being on current desktop during interactive output changes:
++    // - interactive move/resize
++    // - "Move to screen" user action
++    // - Move window to another screen via keyboard shortcut.
++    // ...
++    // On the other hand, this behavior doesn't make sense for non-interactive output changes (e.g. if the output is disabled and all the windows are placed
++    // on another output).
++    if (!oldOutput || m_desktops.empty()) {
++        return;
++    }
++
++    VirtualDesktop *currentOutputDesktop = VirtualDesktopManager::self()->currentDesktop(moveResizeOutput());
++
++    if (m_desktops.contains(currentOutputDesktop)) {
++        return;
++    }
++
++    VirtualDesktop *prevOutputDesktop = VirtualDesktopManager::self()->currentDesktop(oldOutput);
++
++    if (currentOutputDesktop == prevOutputDesktop) {
++        return;
++    }
++
++    auto desktops = m_desktops;
++    desktops.removeOne(prevOutputDesktop);
++    desktops.append(currentOutputDesktop);
++    setDesktops(desktops);
++}
++
+ void Window::setActivationToken(const QString &token)
+ {
+     m_activationToken = token;
+diff --git a/src/window.h b/src/window.h
+index e9e42ccab7..c5ad800a89 100644
+--- a/src/window.h
++++ b/src/window.h
+@@ -1424,8 +1424,9 @@ Q_SIGNALS:
+      * Emitted whenever the Window's screen changes. This can happen either in consequence to
+      * a screen being removed/added or if the Window's geometry changes.
+      * @since 4.11
++     * @param oldOutput The window's previous output.
+      */
+-    void outputChanged();
++    void outputChanged(LogicalOutput *oldOutput);
+     void skipCloseAnimationChanged();
+     /**
+      * Emitted whenever the window role of the window changes.
+@@ -1807,6 +1808,8 @@ protected:
+ 
+     void setDescription(const QString &description);
+ 
++    void finishInteractiveOutputChange(LogicalOutput *oldOutput);
++
+     LogicalOutput *m_output = nullptr;
+     RectF m_frameGeometry;
+     RectF m_clientGeometry;
+diff --git a/src/workspace.cpp b/src/workspace.cpp
+index 1940695cd5..71e80b6966 100644
+--- a/src/workspace.cpp
++++ b/src/workspace.cpp
+@@ -152,8 +152,8 @@ Workspace::Workspace()
+ 
+ #if KWIN_BUILD_ACTIVITIES
+     if (m_activities) {
+-        connect(VirtualDesktopManager::self(), &VirtualDesktopManager::currentChanged, this, [this](VirtualDesktop *previous, VirtualDesktop *current) {
+-            m_activities->notifyCurrentDesktopChanged(current);
++        connect(VirtualDesktopManager::self(), &VirtualDesktopManager::currentChanged, this, [this](VirtualDesktop *previous, VirtualDesktop *current, LogicalOutput *output) {
++            m_activities->notifyCurrentDesktopChanged(current, output);
+         });
+     }
+ #endif
+@@ -199,9 +199,6 @@ void Workspace::init()
+ 
+     connect(this, &Workspace::windowRemoved, m_focusChain.get(), &FocusChain::remove);
+     connect(this, &Workspace::windowActivated, m_focusChain.get(), &FocusChain::setActiveWindow);
+-    connect(VirtualDesktopManager::self(), &VirtualDesktopManager::currentChanged, m_focusChain.get(), [this]() {
+-        m_focusChain->setCurrentDesktop(VirtualDesktopManager::self()->currentDesktop());
+-    });
+     connect(options, &Options::separateScreenFocusChanged, m_focusChain.get(), &FocusChain::setSeparateScreenFocus);
+     m_focusChain->setSeparateScreenFocus(options->isSeparateScreenFocus());
+ 
+@@ -214,6 +211,8 @@ void Workspace::init()
+     connect(vds, &VirtualDesktopManager::currentChangingCancelled, this, &Workspace::slotCurrentDesktopChangingCancelled);
+     vds->setNavigationWrappingAround(options->isRollOverDesktops());
+     connect(options, &Options::rollOverDesktopsChanged, vds, &VirtualDesktopManager::setNavigationWrappingAround);
++    vds->setPerOutputVirtualDesktops(options->isPerOutputVirtualDesktops());
++    connect(options, &Options::perOutputVirtualDesktopsChanged, vds, &VirtualDesktopManager::setPerOutputVirtualDesktops);
+     vds->setConfig(config);
+ 
+     // Now we know how many desktops we'll have, thus we initialize the positioning object
+@@ -1027,16 +1026,16 @@ void Workspace::slotReconfigure()
+     }
+ }
+ 
+-void Workspace::slotCurrentDesktopChanged(VirtualDesktop *oldDesktop, VirtualDesktop *newDesktop)
++void Workspace::slotCurrentDesktopChanged(VirtualDesktop *oldDesktop, VirtualDesktop *newDesktop, LogicalOutput *output)
+ {
+-    updateWindowVisibilityAndActivateOnDesktopChange(newDesktop);
+-    Q_EMIT currentDesktopChanged(oldDesktop, m_moveResizeWindow);
++    updateWindowVisibilityAndActivateOnDesktopChange(newDesktop, output);
++    Q_EMIT currentDesktopChanged(oldDesktop, newDesktop, output, m_moveResizeWindow);
+ }
+ 
+-void Workspace::slotCurrentDesktopChanging(VirtualDesktop *currentDesktop, QPointF offset)
++void Workspace::slotCurrentDesktopChanging(VirtualDesktop *currentDesktop, QPointF offset, LogicalOutput *output)
+ {
+     closeActivePopup();
+-    Q_EMIT currentDesktopChanging(currentDesktop, offset, m_moveResizeWindow);
++    Q_EMIT currentDesktopChanging(currentDesktop, offset, output, m_moveResizeWindow);
+ }
+ 
+ void Workspace::slotCurrentDesktopChangingCancelled()
+@@ -1044,7 +1043,7 @@ void Workspace::slotCurrentDesktopChangingCancelled()
+     Q_EMIT currentDesktopChangingCancelled();
+ }
+ 
+-void Workspace::updateWindowVisibilityOnDesktopChange(VirtualDesktop *newDesktop)
++void Workspace::updateWindowVisibilityOnDesktopChange(VirtualDesktop *newDesktop, LogicalOutput *output)
+ {
+ #if KWIN_BUILD_X11
+     for (auto it = stacking_order.constBegin(); it != stacking_order.constEnd(); ++it) {
+@@ -1052,19 +1051,19 @@ void Workspace::updateWindowVisibilityOnDesktopChange(VirtualDesktop *newDesktop
+         if (!c) {
+             continue;
+         }
+-        if (!(c->isOnDesktop(newDesktop) && c->isOnCurrentActivity()) && c != m_moveResizeWindow) {
++        if (!(c->isOnDesktop(newDesktop) && c->isOnCurrentActivity() && c->isOnOutput(output)) && c != m_moveResizeWindow) {
+             (c)->updateVisibility();
+         }
+     }
+     // Now propagate the change, after hiding, before showing
+-    if (rootInfo()) {
+-        rootInfo()->setCurrentDesktop(VirtualDesktopManager::self()->current());
++    if (rootInfo() && RootInfo::desktopEnabled() && output == m_activeOutput) {
++        rootInfo()->setCurrentDesktop(newDesktop->x11DesktopNumber());
+     }
+ #endif
+ 
+     // FIXME: Keep Move/Resize window across activities
+ 
+-    if (m_moveResizeWindow && !m_moveResizeWindow->isOnDesktop(newDesktop)) {
++    if (m_moveResizeWindow && m_moveResizeWindow->output() == output && !m_moveResizeWindow->isOnDesktop(newDesktop)) {
+         m_moveResizeWindow->setDesktops({newDesktop});
+     }
+ 
+@@ -1074,7 +1073,7 @@ void Workspace::updateWindowVisibilityOnDesktopChange(VirtualDesktop *newDesktop
+         if (!c) {
+             continue;
+         }
+-        if (c->isOnDesktop(newDesktop) && c->isOnCurrentActivity()) {
++        if (c->isOnDesktop(newDesktop) && c->isOnCurrentActivity() && c->isOnOutput(output)) {
+             c->updateVisibility();
+         }
+     }
+@@ -1084,22 +1083,22 @@ void Workspace::updateWindowVisibilityOnDesktopChange(VirtualDesktop *newDesktop
+     }
+ }
+ 
+-void Workspace::updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktop *newDesktop)
++void Workspace::updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktop *newDesktop, LogicalOutput *output)
+ {
+     closeActivePopup();
+     ++block_focus;
+     StackingUpdatesBlocker blocker(this);
+-    updateWindowVisibilityOnDesktopChange(newDesktop);
++    updateWindowVisibilityOnDesktopChange(newDesktop, output);
+     // Restore the focus on this desktop
+     --block_focus;
+ 
+     for (Window *window : std::as_const(m_windows)) {
+-        if (!window->isOnDesktop(newDesktop)) {
++        if (!window->isOnDesktop(newDesktop) || !window->isOnOutput(output)) {
+             continue;
+         }
+ 
+         Tile *tile = nullptr;
+-        for (const auto &[output, manager] : m_tileManagers) {
++        for (const auto &[tileOutput, manager] : m_tileManagers) {
+             if (Tile *candidate = manager->tileForWindow(window, newDesktop)) {
+                 tile = candidate;
+             }
+@@ -1108,7 +1107,9 @@ void Workspace::updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktop
+         window->requestTile(tile);
+     }
+ 
+-    activateWindowOnDesktop(newDesktop);
++    if (output == m_activeOutput) {
++        activateWindowOnDesktop(newDesktop);
++    }
+ }
+ 
+ void Workspace::activateWindowOnDesktop(VirtualDesktop *desktop)
+@@ -1181,7 +1182,9 @@ void Workspace::updateCurrentActivity(const QString &new_activity)
+         return;
+     }
+ 
+-    updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktopManager::self()->currentDesktop());
++    for (LogicalOutput *output : std::as_const(m_outputs)) {
++        updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktopManager::self()->currentDesktop(output), output);
++    }
+ 
+     Q_EMIT currentActivityChanged();
+ #endif
+@@ -1624,7 +1627,7 @@ void Workspace::sendWindowToDesktops(Window *window, const QList<VirtualDesktop
+         raiseWindow(window);
+         // but set a new active window on the current desktop
+         if (wasActive) {
+-            activateWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop());
++            activateWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop(window->output()));
+         }
+     }
+ 
+@@ -2621,7 +2624,11 @@ LogicalOutput *Workspace::activeOutput() const
+ 
+ void Workspace::setActiveOutput(LogicalOutput *output)
+ {
++    if (m_activeOutput == output) {
++        return;
++    }
+     m_activeOutput = output;
++    Q_EMIT activeOutputChanged(output);
+ }
+ 
+ void Workspace::setActiveOutput(const QPointF &pos)
+@@ -3121,7 +3128,7 @@ TileManager *Workspace::tileManager(LogicalOutput *output) const
+ 
+ RootTile *Workspace::rootTile(LogicalOutput *output) const
+ {
+-    return rootTile(output, VirtualDesktopManager::self()->currentDesktop());
++    return rootTile(output, VirtualDesktopManager::self()->currentDesktop(output));
+ }
+ 
+ RootTile *Workspace::rootTile(LogicalOutput *output, VirtualDesktop *desktop) const
+diff --git a/src/workspace.h b/src/workspace.h
+index 2cb9f36d3c..190f8f1d04 100644
+--- a/src/workspace.h
++++ b/src/workspace.h
+@@ -531,8 +531,8 @@ private Q_SLOTS:
+     void slotReloadConfig();
+     void updateCurrentActivity(const QString &new_activity);
+     // virtual desktop handling
+-    void slotCurrentDesktopChanged(VirtualDesktop *previousDesktop, VirtualDesktop *newDesktop);
+-    void slotCurrentDesktopChanging(VirtualDesktop *currentDesktop, QPointF delta);
++    void slotCurrentDesktopChanged(VirtualDesktop *previousDesktop, VirtualDesktop *newDesktop, LogicalOutput *output);
++    void slotCurrentDesktopChanging(VirtualDesktop *currentDesktop, QPointF delta, LogicalOutput *output);
+     void slotCurrentDesktopChangingCancelled();
+     void slotDesktopAdded(VirtualDesktop *desktop);
+     void slotDesktopRemoved(VirtualDesktop *desktop);
+@@ -548,8 +548,8 @@ Q_SIGNALS:
+ 
+     // Signals required for the scripting interface
+     void currentActivityChanged();
+-    void currentDesktopChanged(KWin::VirtualDesktop *previousDesktop, KWin::Window *);
+-    void currentDesktopChanging(KWin::VirtualDesktop *currentDesktop, QPointF delta, KWin::Window *); // for realtime animations
++    void currentDesktopChanged(KWin::VirtualDesktop *previousDesktop, KWin::VirtualDesktop *newDesktop, KWin::LogicalOutput *output, KWin::Window *);
++    void currentDesktopChanging(KWin::VirtualDesktop *currentDesktop, QPointF delta, KWin::LogicalOutput *output, KWin::Window *); // for realtime animations
+     void currentDesktopChangingCancelled();
+     void windowAdded(KWin::Window *);
+     void windowRemoved(KWin::Window *);
+@@ -565,6 +565,7 @@ Q_SIGNALS:
+     void outputAdded(KWin::LogicalOutput *);
+     void outputRemoved(KWin::LogicalOutput *);
+     void outputsChanged();
++    void activeOutputChanged(KWin::LogicalOutput *);
+     /**
+      * This signal is emitted when the stacking order changed, i.e. a window is risen
+      * or lowered
+@@ -615,8 +616,8 @@ private:
+     //---------------------------------------------------------------------
+ 
+     void closeActivePopup();
+-    void updateWindowVisibilityOnDesktopChange(VirtualDesktop *newDesktop);
+-    void updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktop *newDesktop);
++    void updateWindowVisibilityOnDesktopChange(VirtualDesktop *newDesktop, LogicalOutput *output);
++    void updateWindowVisibilityAndActivateOnDesktopChange(VirtualDesktop *newDesktop, LogicalOutput *output);
+     void activateWindowOnDesktop(VirtualDesktop *desktop);
+     Window *findWindowToActivateOnDesktop(VirtualDesktop *desktop);
+     void removeWindow(Window *window);
+diff --git a/src/x11window.cpp b/src/x11window.cpp
+index 2367aab46b..8bc937816d 100644
+--- a/src/x11window.cpp
++++ b/src/x11window.cpp
+@@ -40,6 +40,7 @@
+ #include <KX11Extras>
+ // Qt
+ #include <QProcess>
++#include <QScopeGuard>
+ // xcb
+ #include <xcb/xcb_icccm.h>
+ // system
+@@ -516,7 +517,7 @@ bool X11Window::manage(xcb_window_t w, bool isMapped)
+             if (on_all) {
+                 initialDesktops = QList<VirtualDesktop *>{};
+             } else if (on_current) {
+-                initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop()};
++                initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop(output())};
+             } else if (maincl) {
+                 initialDesktops = maincl->desktops();
+             }
+@@ -563,7 +564,7 @@ bool X11Window::manage(xcb_window_t w, bool isMapped)
+         if (isDesktop()) {
+             initialDesktops = QList<VirtualDesktop *>{};
+         } else {
+-            initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop()};
++            initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop(output())};
+         }
+     }
+     setDesktops(rules()->checkDesktops(*initialDesktops, !isMapped));
+@@ -869,7 +870,7 @@ bool X11Window::manage(xcb_window_t w, bool isMapped)
+         // If session saving, force showing new windows (i.e. "save file?" dialogs etc.)
+         // also force if activation is allowed
+         if (!isOnCurrentDesktop() && !isMapped && !session && (allow || isSessionSaving)) {
+-            VirtualDesktopManager::self()->setCurrent(desktopId());
++            VirtualDesktopManager::self()->setCurrent(desktopId(), output());
+         }
+ 
+         // If the window is on an inactive activity during session saving, temporarily force it to show.
+@@ -3274,6 +3275,13 @@ const QPointF X11Window::calculateGravitation(bool invert) const
+ // coordinates are in kwin logical
+ void X11Window::configureRequest(int value_mask, qreal rx, qreal ry, qreal rw, qreal rh, int gravity, bool from_tool)
+ {
++    // X11Window can be moved/resized interactively by the client itself via configureRequest.
++    auto outputChangeConnection = connect(this, &Window::outputChanged, this, [this](LogicalOutput *oldOutput) {
++        finishInteractiveOutputChange(oldOutput);
++    });
++    auto disconnectOutputChange = qScopeGuard([outputChangeConnection]() {
++        disconnect(outputChangeConnection);
++    });
+     const int configurePositionMask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
+     const int configureSizeMask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT;
+     const int configureGeometryMask = configurePositionMask | configureSizeMask;
+@@ -3599,7 +3607,7 @@ void X11Window::moveResizeInternal(const RectF &rect, MoveResizeMode mode)
+     const RectF oldBufferGeometry = m_bufferGeometry;
+     const RectF oldFrameGeometry = m_frameGeometry;
+     const RectF oldClientGeometry = m_clientGeometry;
+-    const LogicalOutput *oldOutput = m_output;
++    LogicalOutput *oldOutput = m_output;
+ 
+     m_frameGeometry = frameGeometry;
+     m_clientGeometry = clientGeometry;
+@@ -3628,7 +3636,7 @@ void X11Window::moveResizeInternal(const RectF &rect, MoveResizeMode mode)
+         Q_EMIT frameGeometryChanged(oldFrameGeometry);
+     }
+     if (oldOutput != m_output) {
+-        Q_EMIT outputChanged();
++        Q_EMIT outputChanged(oldOutput);
+     }
+     updateShapeRegion();
+ }
+diff --git a/src/xdgshellwindow.cpp b/src/xdgshellwindow.cpp
+index 4f4b2d3987..d60a77740c 100644
+--- a/src/xdgshellwindow.cpp
++++ b/src/xdgshellwindow.cpp
+@@ -1376,6 +1376,15 @@ QVector<VirtualDesktop *> XdgToplevelWindow::initialDesktops(const std::optional
+             }
+         }
+     }
++
++    // XdgToplevelWindow is first assigned to the current virtual desktop on the active output by the constructor.
++    // However, the application can request that the window is fullscreened on a particular output, which may have a different
++    // desktop. This caused the desktop to change on that output. This happened for Spectacle.
++    // On the other hand there's also installPlasmaShellSurface(), which can reassign it to all desktops before initialize().
++    if (moveResizeOutput() != output() && !desktops().isEmpty()) {
++        return {VirtualDesktopManager::self()->currentDesktop(moveResizeOutput())};
++    }
++
+     return desktops();
+ }
+ 
+-- 
+2.43.0
+

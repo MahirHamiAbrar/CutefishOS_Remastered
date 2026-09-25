@@ -1,0 +1,275 @@
+From 95f7e0c31de1ba3f51281ffd217c615306096ac2 Mon Sep 17 00:00:00 2001
+From: Hynek Schlindenbuch <schlindenbuch.h@seznam.cz>
+Date: Sat, 31 Jan 2026 08:53:37 +0100
+Subject: [PATCH] effect: add QuickSceneView::currentDesktop
+
+It makes it easier to handle per-output desktops in effects.
+---
+ src/effect/quickeffect.cpp              | 19 +++++++++++++++++++
+ src/effect/quickeffect.h                | 15 +++++++++++++++
+ src/plugins/overview/qml/DesktopBar.qml |  4 ++--
+ src/plugins/overview/qml/Main.qml       | 19 ++++---------------
+ src/plugins/tileseditor/qml/Main.qml    | 15 ++-------------
+ src/plugins/windowview/qml/Main.qml     | 18 +++---------------
+ 6 files changed, 45 insertions(+), 45 deletions(-)
+
+diff --git a/src/effect/quickeffect.cpp b/src/effect/quickeffect.cpp
+index b8e771f2c1..8c4e18f6ee 100644
+--- a/src/effect/quickeffect.cpp
++++ b/src/effect/quickeffect.cpp
+@@ -7,6 +7,8 @@
+ #include "effect/quickeffect.h"
+ #include "core/output.h"
+ #include "effect/effecthandler.h"
++#include "input_event.h"
++#include "virtualdesktops.h"
+ 
+ #include "logging_p.h"
+ 
+@@ -99,6 +101,13 @@ QuickSceneView::QuickSceneView(QuickSceneEffect *effect, LogicalOutput *screen)
+     connect(screen, &LogicalOutput::geometryChanged, this, [this, screen]() {
+         setGeometry(screen->geometry());
+     });
++    connect(VirtualDesktopManager::self(), &VirtualDesktopManager::currentChanged, this, [this](VirtualDesktop *, VirtualDesktop *newDesktop, LogicalOutput *screen) {
++        if (m_screen != screen) {
++            return;
++        }
++
++        Q_EMIT currentDesktopChanged(newDesktop);
++    });
+ 
+     s_views.insert(window(), this);
+ }
+@@ -158,6 +167,16 @@ void QuickSceneView::scheduleRepaint()
+     effects->addRepaint(geometry());
+ }
+ 
++VirtualDesktop *QuickSceneView::currentDesktop() const
++{
++    return VirtualDesktopManager::self()->currentDesktop(m_screen);
++}
++
++void QuickSceneView::setCurrentDesktop(VirtualDesktop *desktop)
++{
++    VirtualDesktopManager::self()->setCurrent(desktop, m_screen);
++}
++
+ QuickSceneView *QuickSceneView::findView(QQuickItem *item)
+ {
+     return s_views.value(item->window());
+diff --git a/src/effect/quickeffect.h b/src/effect/quickeffect.h
+index 0a6e976bf6..236029b105 100644
+--- a/src/effect/quickeffect.h
++++ b/src/effect/quickeffect.h
+@@ -17,6 +17,7 @@ namespace KWin
+ 
+ class QuickSceneEffect;
+ class QuickSceneEffectPrivate;
++class VirtualDesktop;
+ 
+ /**
+  * The QuickSceneView represents a QtQuick scene view on a particular screen.
+@@ -33,6 +34,11 @@ class KWIN_EXPORT QuickSceneView : public OffscreenQuickView
+     Q_PROPERTY(LogicalOutput *screen READ screen CONSTANT)
+     Q_PROPERTY(QQuickItem *rootItem READ rootItem CONSTANT)
+ 
++    /*!
++     * \property KWin::QuickSceneView::currentDesktop
++     */
++    Q_PROPERTY(VirtualDesktop *currentDesktop READ currentDesktop WRITE setCurrentDesktop NOTIFY currentDesktopChanged)
++
+ public:
+     explicit QuickSceneView(QuickSceneEffect *effect, LogicalOutput *screen);
+     ~QuickSceneView() override;
+@@ -43,6 +49,12 @@ public:
+     QQuickItem *rootItem() const;
+     void setRootItem(QQuickItem *item);
+ 
++    VirtualDesktop *currentDesktop() const;
++    void setCurrentDesktop(VirtualDesktop *desktop);
++
++    /*!
++     * \internal
++     */
+     bool isDirty() const;
+     void markDirty();
+     void resetDirty();
+@@ -53,6 +65,9 @@ public:
+ public Q_SLOTS:
+     void scheduleRepaint();
+ 
++Q_SIGNALS:
++    void currentDesktopChanged(VirtualDesktop *newDesktop);
++
+ private:
+     QuickSceneEffect *m_effect;
+     LogicalOutput *m_screen;
+diff --git a/src/plugins/overview/qml/DesktopBar.qml b/src/plugins/overview/qml/DesktopBar.qml
+index b36c693ed8..eef94818e7 100644
+--- a/src/plugins/overview/qml/DesktopBar.qml
++++ b/src/plugins/overview/qml/DesktopBar.qml
+@@ -75,10 +75,10 @@ Item {
+                     Keys.onRightPressed: nextItemInFocusChain(!LayoutMirroring.enabled).forceActiveFocus(Qt.TabFocusReason);
+ 
+                     function activate() {
+-                        if (KWinComponents.Workspace.currentDesktop === delegate.desktop) {
++                        if (KWinComponents.SceneView.currentDesktop === delegate.desktop) {
+                             effect.deactivate()
+                         } else {
+-                            KWinComponents.Workspace.currentDesktop = delegate.desktop;
++                            KWinComponents.SceneView.currentDesktop = delegate.desktop;
+                         }
+                     }
+ 
+diff --git a/src/plugins/overview/qml/Main.qml b/src/plugins/overview/qml/Main.qml
+index 0b79d76faa..90275f8741 100644
+--- a/src/plugins/overview/qml/Main.qml
++++ b/src/plugins/overview/qml/Main.qml
+@@ -32,7 +32,7 @@ FocusScope {
+     property bool organized: false
+ 
+     property bool verticalDesktopBar: KWinComponents.Workspace.desktopGridHeight >= bar.desktopCount && KWinComponents.Workspace.desktopGridHeight != 1
+-    property QtObject currentDesktop: KWinComponents.Workspace.currentDesktopForScreen(targetScreen)
++    property QtObject currentDesktop: KWinComponents.SceneView.currentDesktop
+     property point targetScreenDesktopOffset: effect.desktopOffsetForScreen(targetScreen);
+ 
+     // The values of overviewVal and gridVal might not be 0 on startup,
+@@ -126,7 +126,7 @@ FocusScope {
+     }
+ 
+     function switchTo(desktop) {
+-        KWinComponents.Workspace.setCurrentDesktopForScreen(desktop, targetScreen);
++        KWinComponents.SceneView.currentDesktop = desktop;
+         effect.deactivate();
+     }
+ 
+@@ -173,7 +173,7 @@ FocusScope {
+         }
+         let newIndex = y * container.columns + x;
+ 
+-        KWinComponents.Workspace.setCurrentDesktopForScreen(allDesktopHeaps.itemAt(newIndex).desktop, targetScreen);
++        KWinComponents.SceneView.currentDesktop = allDesktopHeaps.itemAt(newIndex).desktop;
+         allDesktopHeaps.itemAt(newIndex).nestedHeap.focus = true
+         allDesktopHeaps.itemAt(newIndex).selectLastItem(invertedDirection);
+         return true;
+@@ -585,7 +585,7 @@ FocusScope {
+                     TapHandler {
+                         acceptedButtons: Qt.LeftButton
+                         onTapped: {
+-                            KWinComponents.Workspace.setCurrentDesktopForScreen(mainBackground.desktop, container.targetScreen);
++                            container.KWinComponents.SceneView.currentDesktop = mainBackground.desktop;
+                             container.effect.deactivate();
+                         }
+                     }
+@@ -811,15 +811,4 @@ FocusScope {
+             container.targetScreenDesktopOffset = effect.desktopOffsetForScreen(screen);
+         }
+     }
+-
+-    Connections {
+-        target: KWinComponents.Workspace
+-        onCurrentDesktopChanged: (previous, current, screen) => {
+-            if (screen !== container.targetScreen) {
+-                return;
+-            }
+-
+-            container.currentDesktop = current;
+-        }
+-    }
+ }
+diff --git a/src/plugins/tileseditor/qml/Main.qml b/src/plugins/tileseditor/qml/Main.qml
+index 6bdcd3f62d..66b686526f 100644
+--- a/src/plugins/tileseditor/qml/Main.qml
++++ b/src/plugins/tileseditor/qml/Main.qml
+@@ -39,8 +39,7 @@ FocusScope {
+ 
+     property bool active: false
+ 
+-    property QtObject currentDesktop: KWinComponents.Workspace.currentDesktopForScreen(targetScreen)
+-    readonly property QtObject rootTile: KWinComponents.Workspace.rootTile(root.targetScreen, currentDesktop)
++    readonly property QtObject rootTile: KWinComponents.Workspace.rootTile(root.targetScreen, KWinComponents.SceneView.currentDesktop)
+ 
+     Component.onCompleted: {
+         root.active = true;
+@@ -62,7 +61,7 @@ FocusScope {
+         Repeater {
+             model: KWinComponents.WindowFilterModel {
+                 activity: KWinComponents.Workspace.currentActivity
+-                desktop: root.currentDesktop
++                desktop: root.KWinComponents.SceneView.currentDesktop
+                 screenName: targetScreen.name
+                 windowModel: KWinComponents.WindowModel {}
+             }
+@@ -273,14 +272,4 @@ FocusScope {
+             }
+         }
+     }
+-    Connections {
+-        target: KWinComponents.Workspace
+-        onCurrentDesktopChanged: (previous, current, screen) => {
+-            if (screen !== root.targetScreen) {
+-                return;
+-            }
+-
+-            root.currentDesktop = current;
+-        }
+-    }
+ }
+diff --git a/src/plugins/windowview/qml/Main.qml b/src/plugins/windowview/qml/Main.qml
+index b3e0ff50a2..df78555210 100644
+--- a/src/plugins/windowview/qml/Main.qml
++++ b/src/plugins/windowview/qml/Main.qml
+@@ -19,7 +19,6 @@ Item {
+ 
+     readonly property QtObject effect: KWinComponents.SceneView.effect
+     readonly property QtObject targetScreen: KWinComponents.SceneView.screen
+-    property QtObject currentDesktop: KWinComponents.Workspace.currentDesktopForScreen(targetScreen)
+ 
+     property bool animationEnabled: false
+     property bool organized: false
+@@ -64,7 +63,7 @@ Item {
+ 
+     KWinComponents.DesktopBackground {
+         activity: KWinComponents.Workspace.currentActivity
+-        desktop: currentDesktop
++        desktop: container.KWinComponents.SceneView.currentDesktop
+         outputName: targetScreen.name
+ 
+         layer.enabled: true
+@@ -186,7 +185,7 @@ Item {
+                     switch (container.effect.mode) {
+                         case WindowView.ModeCurrentDesktop:
+                         case WindowView.ModeWindowClassCurrentDesktop:
+-                            return container.currentDesktop;
++                            return container.KWinComponents.SceneView.currentDesktop;
+                         default:
+                             return undefined;
+                     }
+@@ -240,7 +239,7 @@ Item {
+         asynchronous: true
+ 
+         model: KWinComponents.WindowFilterModel {
+-            desktop: currentDesktop
++            desktop: container.KWinComponents.SceneView.currentDesktop
+             screenName: targetScreen.name
+             windowModel: stackModel
+             windowType: KWinComponents.WindowFilterModel.Dock
+@@ -270,15 +269,4 @@ Item {
+     }
+ 
+     Component.onCompleted: start();
+-
+-    Connections {
+-        target: KWinComponents.Workspace
+-        onCurrentDesktopChanged: (previous, current, screen) => {
+-            if (screen !== container.targetScreen) {
+-                return;
+-            }
+-
+-            container.currentDesktop = current;
+-        }
+-    }
+ }
+-- 
+2.43.0
+

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+# Mozilla's APT repository for Firefox (the Ubuntu "firefox" deb is a snap wrapper).
+if [ "$1" = configure ]; then
+    [ -e /etc/apt/sources.list.d/mozilla.sources ] || cp /usr/share/cutefish-desktop/mozilla.sources /etc/apt/sources.list.d/
+    [ -e /etc/apt/preferences.d/mozilla ] || cp /usr/share/cutefish-desktop/mozilla.pref /etc/apt/preferences.d/mozilla
+fi
+#DEBHELPER#

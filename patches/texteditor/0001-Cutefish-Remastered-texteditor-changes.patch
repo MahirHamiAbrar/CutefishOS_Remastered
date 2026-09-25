@@ -1,0 +1,362 @@
+From 281fdfa730fdbacef7b66c76205580c1043cf5b8 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:33 +0600
+Subject: [PATCH] Cutefish Remastered: texteditor changes
+
+- Port to Qt 6 / KF6; open files from the command line; File menu, open/save dialogs, install rules
+---
+ CMakeLists.txt          | 15 +++++++----
+ cutefish-editor.desktop |  2 +-
+ debian/changelog        |  7 +++---
+ debian/compat           |  1 -
+ debian/control          | 30 +++++++++++++++-------
+ debian/rules            | 23 +----------------
+ qml/TextEditor.qml      | 10 +++++---
+ qml/main.qml            | 55 ++++++++++++++++++++++++++++++++++++-----
+ src/documenthandler.cpp |  8 +++---
+ src/documenthandler.h   |  2 +-
+ src/main.cpp            | 16 +++++++++---
+ 11 files changed, 110 insertions(+), 59 deletions(-)
+ delete mode 100644 debian/compat
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 45df845..a12012a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -11,8 +11,9 @@ set(CMAKE_AUTORCC ON)
+ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ 
+-find_package(Qt5 COMPONENTS Core Quick REQUIRED)
+-find_package(KF5SyntaxHighlighting)
++find_package(Qt6 COMPONENTS Core Gui Quick REQUIRED)
++include(GNUInstallDirs)
++find_package(KF6SyntaxHighlighting REQUIRED)
+ 
+ set(PROJECT_SOURCES
+         src/main.cpp
+@@ -28,7 +29,11 @@ add_executable(cutefish-texteditor
+ 
+ target_link_libraries(cutefish-texteditor
+   PRIVATE
+-  Qt5::Core
+-  Qt5::Quick
+-  KF5::SyntaxHighlighting
++  Qt6::Core
++  Qt6::Quick
++  KF6::SyntaxHighlighting
+   )
++
++set_target_properties(cutefish-texteditor PROPERTIES OUTPUT_NAME cutefish-editor)
++install(TARGETS cutefish-texteditor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
++install(FILES cutefish-editor.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+diff --git a/cutefish-editor.desktop b/cutefish-editor.desktop
+index 5e74075..d0ebd55 100644
+--- a/cutefish-editor.desktop
++++ b/cutefish-editor.desktop
+@@ -2,7 +2,7 @@
+ Categories=Utility;TextEditor;
+ Comment=General text editor
+ Exec=cutefish-editor %F
+-Icon=cutefish-editor
++Icon=accessories-text-editor
+ Name=Cutefish Text Editor
+ GenericName=Cutefish Text Editor
+ StartupNotify=false
+diff --git a/debian/changelog b/debian/changelog
+index 311c8af..d04f7db 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,5 +1,6 @@
+-texteditor (0.7-1) UNRELEASED; urgency=medium
++cutefish-texteditor (0.7+remastered1) resolute; urgency=medium
+ 
+-  * Initial Release.
++  * Port to Qt 6 / KF6, open files from the command line, add File menu,
++    open/save dialogs and install rules.
+ 
+- -- CutefishOS Packaging Team <support@cutefishos.com> Sun, 16 Jan 2022 18:12:05 +0800
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:35:21 +0600
+diff --git a/debian/compat b/debian/compat
+deleted file mode 100644
+index ec63514..0000000
+--- a/debian/compat
++++ /dev/null
+@@ -1 +0,0 @@
+-9
+diff --git a/debian/control b/debian/control
+index 30028e8..1c42422 100644
+--- a/debian/control
++++ b/debian/control
+@@ -1,14 +1,26 @@
+-Source: texteditor
+-Section: devel
++Source: cutefish-texteditor
++Section: editors
+ Priority: optional
+ Maintainer: CutefishOS <cutefishos@foxmail.com>
+ Build-Depends: cmake,
+-               debhelper (>= 9),
+-			   libkf5syntaxhighlighting-dev
+-Standards-Version: 4.5.0
+-Homepage: https://github.com/cutefishos/texteditor
++               debhelper-compat (= 13),
++               extra-cmake-modules,
++               libkf6syntaxhighlighting-dev,
++               qt6-base-dev,
++               qt6-declarative-dev
++Standards-Version: 4.6.2
++Homepage: https://github.com/cutefishs/texteditor
+ 
+-Package: texteditor
++Package: cutefish-texteditor
+ Architecture: any
+-Depends: ${shlibs:Depends}, ${misc:Depends}
+-Description: CutefishOS Texteditor
++Depends: fishui,
++         qml6-module-qtquick,
++         qml6-module-qtquick-controls,
++         qml6-module-qtquick-layouts,
++         qml6-module-qtquick-window,
++         qml6-module-qt-labs-platform,
++         qml6-module-qtqml,
++         ${misc:Depends},
++         ${shlibs:Depends}
++Description: CutefishOS Text Editor
++ Tabbed plain text editor with syntax highlighting.
+diff --git a/debian/rules b/debian/rules
+index 08ae9b5..2d33f6a 100755
+--- a/debian/rules
++++ b/debian/rules
+@@ -1,25 +1,4 @@
+ #!/usr/bin/make -f
+-# See debhelper(7) (uncomment to enable)
+-# output every command that modifies files on the build system.
+-#export DH_VERBOSE = 1
+-
+-
+-# see FEATURE AREAS in dpkg-buildflags(1)
+-#export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+-
+-# see ENVIRONMENT in dpkg-buildflags(1)
+-# package maintainers to append CFLAGS
+-#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
+-# package maintainers to append LDFLAGS
+-#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+-
+ 
+ %:
+-	dh $@ --parallel
+-
+-
+-# dh_make generated override targets
+-# This is example for Cmake (See https://bugs.debian.org/641051 )
+-#override_dh_auto_configure:
+-#	dh_auto_configure -- \
+-#	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
++	dh $@
+diff --git a/qml/TextEditor.qml b/qml/TextEditor.qml
+index ed803cf..66adff0 100644
+--- a/qml/TextEditor.qml
++++ b/qml/TextEditor.qml
+@@ -9,7 +9,7 @@ import Cutefish.TextEditor 1.0
+ Item {
+     id: control
+ 
+-    property var tabName: document.fileName + (document.modified ? " *" : "")
++    property var tabName: (document.fileName !== "" ? document.fileName : qsTr("Untitled")) + (document.modified ? " *" : "")
+ 
+     property alias fileUrl: document.fileUrl
+     property alias fileName: document.fileName
+@@ -33,9 +33,6 @@ Item {
+             body.select(start, end)
+         }
+ 
+-        onFileSaved: {
+-            root.showPassiveNotification(qsTr("Saved successfully"), 3000)
+-        }
+     }
+ 
+     ScrollView {
+@@ -209,4 +206,9 @@ Item {
+     function save() {
+         document.saveAs(document.fileUrl)
+     }
++
++    function saveAs(url) {
++        document.saveAs(url)
++        document.fileUrl = url
++    }
+ }
+diff --git a/qml/main.qml b/qml/main.qml
+index dcadcc2..e7d5f2e 100644
+--- a/qml/main.qml
++++ b/qml/main.qml
+@@ -4,6 +4,7 @@ import QtQuick.Controls 2.15
+ import QtQuick.Layouts 1.15
+ import FishUI 1.0 as FishUI
+ import Cutefish.TextEditor 1.0
++import Qt.labs.platform as Platform
+ 
+ FishUI.Window {
+     id: root
+@@ -17,8 +18,8 @@ FishUI.Window {
+     FileHelper {
+         id: fileHelper
+ 
+-        onNewPath: {
+-            _tabView.addTab(textEditorCompeont, { fileUrl: path })
++        function onNewPath(path) {
++            root.addPath(path)
+         }
+     }
+ 
+@@ -72,7 +73,7 @@ FishUI.Window {
+         id: _dropArea
+         anchors.fill: parent
+ 
+-        onDropped: {
++        onDropped: (drop) => {
+             if (drop.hasUrls) {
+                 for (var i = 0; i < drop.urls.length; ++i) {
+                     fileHelper.addPath(drop.urls[i])
+@@ -127,12 +128,54 @@ FishUI.Window {
+     Component {
+         id: textEditorCompeont
+ 
+-        TextEditor {
+-            fileUrl: "file:///home/cutefish/桌面/winepath"
++        TextEditor {}
++    }
++
++    // Exported to the Cutefish status bar as the global menu.
++    Platform.MenuBar {
++        Platform.Menu {
++            title: qsTr("File")
++            Platform.MenuItem { text: qsTr("New Tab"); shortcut: StandardKey.New; onTriggered: root.addTab() }
++            Platform.MenuItem { text: qsTr("Open..."); shortcut: StandardKey.Open; onTriggered: _openDialog.open() }
++            Platform.MenuItem { text: qsTr("Save"); shortcut: StandardKey.Save; onTriggered: root.saveCurrent() }
++            Platform.MenuItem { text: qsTr("Save As..."); shortcut: StandardKey.SaveAs; onTriggered: _saveDialog.open() }
++            Platform.MenuSeparator {}
++            Platform.MenuItem { text: qsTr("Close Tab"); shortcut: StandardKey.Close; onTriggered: _tabView.closeTab(_tabView.currentIndex) }
++            Platform.MenuItem { text: qsTr("Quit"); shortcut: StandardKey.Quit; onTriggered: Qt.quit() }
++        }
++    }
++
++    Platform.FileDialog {
++        id: _openDialog
++        fileMode: Platform.FileDialog.OpenFiles
++        onAccepted: {
++            for (var i = 0; i < files.length; ++i)
++                root.addPath(files[i])
+         }
+     }
+ 
++    Platform.FileDialog {
++        id: _saveDialog
++        fileMode: Platform.FileDialog.SaveFile
++        onAccepted: {
++            if (_tabView.currentItem)
++                _tabView.currentItem.saveAs(file)
++        }
++    }
++
++    function saveCurrent() {
++        if (!_tabView.currentItem)
++            return
++        if (_tabView.currentItem.fileUrl.toString() === "")
++            _saveDialog.open()
++        else
++            _tabView.currentItem.save()
++    }
++
+     Component.onCompleted: {
+-        // addTab()
++        for (var i = 0; i < startupFiles.length; ++i)
++            addPath(startupFiles[i])
++        if (_tabView.count === 0)
++            addTab()
+     }
+ }
+diff --git a/src/documenthandler.cpp b/src/documenthandler.cpp
+index 8e224d4..81918d8 100644
+--- a/src/documenthandler.cpp
++++ b/src/documenthandler.cpp
+@@ -60,7 +60,7 @@
+ #include <QQmlFileSelector>
+ #include <QQuickTextDocument>
+ #include <QTextCharFormat>
+-#include <QTextCodec>
++#include <QStringDecoder>
+ #include <QTextDocument>
+ #include <QTextDocumentWriter>
+ #include <QUrl>
+@@ -153,8 +153,10 @@ void FileLoader::loadFile(const QUrl &url)
+ 
+     if (file.open(QFile::ReadOnly)) {
+         const auto array = file.readAll();
+-        QTextCodec *codec = QTextDocumentWriter(url.toLocalFile()).codec();
+-        emit this->fileReady(codec->toUnicode(array), url);
++        // Honour a BOM if present, otherwise assume UTF-8 (QTextCodec is gone in Qt 6).
++        const auto encoding = QStringConverter::encodingForData(array).value_or(QStringConverter::Utf8);
++        QStringDecoder decoder(encoding);
++        emit this->fileReady(decoder(array), url);
+     }
+ }
+ 
+diff --git a/src/documenthandler.h b/src/documenthandler.h
+index c2c1105..a411b06 100644
+--- a/src/documenthandler.h
++++ b/src/documenthandler.h
+@@ -63,7 +63,7 @@
+ QT_BEGIN_NAMESPACE
+ class QFileSystemWatcher;
+ class QTextDocument;
+-class QQuickTextDocument;
++#include <QQuickTextDocument> // moc in Qt 6 needs the complete type
+ QT_END_NAMESPACE
+ 
+ namespace KSyntaxHighlighting
+diff --git a/src/main.cpp b/src/main.cpp
+index e583821..878c905 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -1,16 +1,23 @@
+ #include <QGuiApplication>
+ #include <QQmlApplicationEngine>
++#include <QQmlContext>
++#include <QUrl>
++#include <QDir>
++#include <QIcon>
+ #include "documenthandler.h"
+ #include "highlightmodel.h"
+ #include "texteditor.h"
+ 
+ int main(int argc, char *argv[])
+ {
+-#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+-#endif
+-
+     QGuiApplication app(argc, argv);
++    app.setWindowIcon(QIcon::fromTheme("accessories-text-editor"));
++    QGuiApplication::setDesktopFileName("cutefish-editor");
++
++    // Files passed on the command line (Exec=cutefish-editor %F).
++    QStringList startupFiles;
++    for (const QString &arg : app.arguments().mid(1))
++        startupFiles << QUrl::fromUserInput(arg, QDir::currentPath(), QUrl::AssumeLocalFile).toString();
+ 
+     qmlRegisterType<DocumentHandler>("Cutefish.TextEditor", 1, 0, "DocumentHandler");
+     qmlRegisterType<FileHelper>("Cutefish.TextEditor", 1, 0, "FileHelper");
+@@ -18,6 +25,7 @@ int main(int argc, char *argv[])
+     HighlightModel m;
+ 
+     QQmlApplicationEngine engine;
++    engine.rootContext()->setContextProperty("startupFiles", startupFiles);
+     const QUrl url(QStringLiteral("qrc:/qml/main.qml"));
+     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
+                      &app, [url](QObject *obj, const QUrl &objUrl) {
+-- 
+2.43.0
+

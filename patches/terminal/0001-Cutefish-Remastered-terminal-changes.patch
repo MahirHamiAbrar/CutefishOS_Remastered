@@ -1,0 +1,199 @@
+From e62d57d0327c35b48075d21d04c86e3f19ac7305 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:33 +0600
+Subject: [PATCH] Cutefish Remastered: terminal changes
+
+- Build against the in-tree framework applications library; use RoundImageButton (HeaderButton is not in FishUI yet)
+---
+ CMakeLists.txt                    |  9 +++-
+ debian/changelog                  |  6 +++
+ qmltermwidget/CMakeLists.txt      |  2 +-
+ qmltermwidget/lib/proxysettings.h | 78 +++++++++++++++++++++++++++++++
+ src/main.cpp                      |  3 +-
+ src/qml/main.qml                  |  5 +-
+ 6 files changed, 96 insertions(+), 7 deletions(-)
+ create mode 100644 qmltermwidget/lib/proxysettings.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d3ab689..f2e792e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -12,7 +12,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ 
+ set(QT Core Gui Network Qml Quick Widgets DBus LinguistTools)
+ find_package(Qt6 REQUIRED ${QT})
+-find_package(CutefishFramework REQUIRED COMPONENTS Application)
++# The framework's Application component is not published upstream yet; build
++# its applications library from the sibling checkout like Settings and Files do.
++add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../cutefish-framework/applications
++                 ${CMAKE_CURRENT_BINARY_DIR}/cutefish-framework-applications-build)
++# Linked into the qmltermwidget QML plugin (a shared module) too.
++set_target_properties(cutefish-framework-applications PROPERTIES POSITION_INDEPENDENT_CODE ON)
+ 
+ # Where QML modules go, so the terminal widget plugin lands next to FishUI.
+ find_program(QT_PATHS_EXECUTABLE NAMES qtpaths6 REQUIRED)
+@@ -46,7 +51,7 @@ target_link_libraries(${PROJECT_NAME}
+         Qt6::Quick
+         Qt6::Widgets
+         Qt6::DBus
+-        Cutefish::Application
++        Cutefish::Applications
+ )
+ 
+ file(GLOB TS_FILES translations/*.ts)
+diff --git a/debian/changelog b/debian/changelog
+index 8bfd39e..8c2f9f6 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-terminal (0.7+remastered1) resolute; urgency=medium
++
++  * Build against the in-tree framework applications library; use RoundImageButton (HeaderButton is not in FishUI yet)
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 22:13:54 +0600
++
+ cutefish-terminal (0.7) UNRELEASED; urgency=low
+ 
+   * Initial release (CutefishOS)  <support@cutefishos.com>
+diff --git a/qmltermwidget/CMakeLists.txt b/qmltermwidget/CMakeLists.txt
+index d763d25..6a558ca 100644
+--- a/qmltermwidget/CMakeLists.txt
++++ b/qmltermwidget/CMakeLists.txt
+@@ -74,7 +74,7 @@ target_link_libraries(cutefishqmltermwidget
+     Qt6::Qml
+     Qt6::Quick
+     Qt6::Widgets
+-    Cutefish::Application
++    Cutefish::Applications
+ )
+ 
+ install(TARGETS cutefishqmltermwidget DESTINATION ${INSTALL_QMLDIR}/Cutefish/TermWidget)
+diff --git a/qmltermwidget/lib/proxysettings.h b/qmltermwidget/lib/proxysettings.h
+new file mode 100644
+index 0000000..6f3c5e4
+--- /dev/null
++++ b/qmltermwidget/lib/proxysettings.h
+@@ -0,0 +1,78 @@
++/*
++ * Session proxy for new shells.
++ *
++ * Upstream Terminal includes this header from a framework version that has not
++ * been published yet. This local copy reads the same settings as the session's
++ * NetworkProxyManager (core/session/networkproxymanager.cpp): QSettings
++ * "cutefishos"/"network", manual proxy when ProxyFlag == 2. When the framework
++ * ships its own ProxySettings, delete this file.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++#ifndef PROXYSETTINGS_H
++#define PROXYSETTINGS_H
++
++#include <QMap>
++#include <QSettings>
++#include <QString>
++#include <QStringList>
++
++struct ProxySettings
++{
++    bool manual = false;
++    bool useSameProxy = false;
++    QString httpHost, httpPort, ftpHost, ftpPort;
++
++    static ProxySettings load()
++    {
++        QSettings s(QSettings::UserScope, QStringLiteral("cutefishos"), QStringLiteral("network"));
++        ProxySettings p;
++        p.manual = s.value(QStringLiteral("ProxyFlag"), 0).toInt() == 2;
++        p.useSameProxy = s.value(QStringLiteral("UseSameProxy"), false).toBool();
++        p.httpHost = s.value(QStringLiteral("HttpProxy")).toString();
++        p.httpPort = s.value(QStringLiteral("HttpProxyPort")).toString();
++        p.ftpHost = s.value(QStringLiteral("FtpProxy")).toString();
++        p.ftpPort = s.value(QStringLiteral("FtpProxyPort")).toString();
++        return p;
++    }
++};
++
++namespace ProxyEnvironment
++{
++//! Every variable a shell might have inherited; the ones not in variables() are unset.
++inline QStringList names()
++{
++    return {QStringLiteral("HTTP_PROXY"), QStringLiteral("HTTPS_PROXY"), QStringLiteral("FTP_PROXY"),
++            QStringLiteral("ALL_PROXY"), QStringLiteral("NO_PROXY"), QStringLiteral("http_proxy"),
++            QStringLiteral("https_proxy"), QStringLiteral("ftp_proxy"), QStringLiteral("all_proxy"),
++            QStringLiteral("no_proxy")};
++}
++
++inline QMap<QString, QString> variables(const ProxySettings &p)
++{
++    QMap<QString, QString> env;
++    if (!p.manual)
++        return env;
++
++    const QString http = QStringLiteral("http://%1:%2/").arg(p.httpHost, p.httpPort);
++    const QString ftp = p.useSameProxy ? http : QStringLiteral("http://%1:%2/").arg(p.ftpHost, p.ftpPort);
++
++    if (!p.httpHost.isEmpty() && !p.httpPort.isEmpty()) {
++        for (const char *name : {"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"})
++            env.insert(QString::fromLatin1(name), http);
++    }
++    if ((p.useSameProxy && !p.httpHost.isEmpty()) || (!p.ftpHost.isEmpty() && !p.ftpPort.isEmpty())) {
++        env.insert(QStringLiteral("FTP_PROXY"), ftp);
++        env.insert(QStringLiteral("ftp_proxy"), ftp);
++    }
++    env.insert(QStringLiteral("NO_PROXY"), QStringLiteral("localhost,127.0.0.0/8,::1"));
++    env.insert(QStringLiteral("no_proxy"), QStringLiteral("localhost,127.0.0.0/8,::1"));
++    return env;
++}
++} // namespace ProxyEnvironment
++
++#endif // PROXYSETTINGS_H
+diff --git a/src/main.cpp b/src/main.cpp
+index 328538b..f31a01d 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -27,7 +27,6 @@
+ #include <QCommandLineParser>
+ #include <QDir>
+ 
+-#include "cutefishapplication.h"
+ #include "processhelper.h"
+ #include "utils.h"
+ #include "fonts.h"
+@@ -35,7 +34,7 @@
+ int main(int argc, char *argv[])
+ {
+     QApplication app(argc, argv);
+-    Cutefish::Application::prepare();
++    app.setDesktopFileName(QStringLiteral("cutefish-terminal"));
+     app.setWindowIcon(QIcon::fromTheme("terminal"));
+ 
+     // Everything after -e is the command and its own options, so it is split
+diff --git a/src/qml/main.qml b/src/qml/main.qml
+index 943ec22..2709048 100644
+--- a/src/qml/main.qml
++++ b/src/qml/main.qml
+@@ -217,13 +217,14 @@ FishUI.Window {
+             }
+         }
+ 
+-        FishUI.HeaderButton {
++        FishUI.RoundImageButton {
+             id: _newTabButton
+             anchors.right: parent.right
+             anchors.rightMargin: root.windowButtonsSpacing
+             anchors.verticalCenter: parent.verticalCenter
+             size: 32
+-            artwork: "add"
++            source: "qrc:/fishui/kit/images/" + (FishUI.Theme.darkMode ? "dark/" : "light/") + "add.svg"
++            iconSize: 24
+             onClicked: root.openNewTab()
+         }
+     }
+-- 
+2.43.0
+

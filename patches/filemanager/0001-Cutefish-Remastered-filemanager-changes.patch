@@ -1,0 +1,40 @@
+From 114a85d3042081c6996ecc811abf8a450360c9a5 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:32 +0600
+Subject: [PATCH] Cutefish Remastered: filemanager changes
+
+- Follow the default FishUI window translucency
+---
+ debian/changelog | 6 ++++++
+ qml/main.qml     | 1 -
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index f091f72..2f61125 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-filemanager (0.8+remastered1) resolute; urgency=medium
++
++  * Follow the default FishUI window translucency
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:38:17 +0600
++
+ cutefish-filemanager (0.8) UNRELEASED; urgency=high
+ 
+   * Initial release (CutefishOS)  <support@cutefishos.com>
+diff --git a/qml/main.qml b/qml/main.qml
+index 6003ca3..6044b05 100644
+--- a/qml/main.qml
++++ b/qml/main.qml
+@@ -35,7 +35,6 @@ FishUI.Window {
+     visible: true
+     title: qsTr("File Manager")
+ 
+-    background.opacity: 1
+     header.height: 40
+     contentTopMargin: 0
+ 
+-- 
+2.43.0
+

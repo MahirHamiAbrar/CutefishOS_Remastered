@@ -1,0 +1,13 @@
+#!/bin/sh
+# casper's 15autologin only knows the Kubuntu/Lubuntu/Budgie sessions and
+# writes an empty "Session=" for anything else; point SDDM at Cutefish.
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case $1 in
+    prereqs) prereqs; exit 0 ;;
+esac
+
+if [ -f /root/etc/sddm.conf ]; then
+    sed -i 's/^Session=$/Session=cutefish-wayland.desktop/' /root/etc/sddm.conf
+fi

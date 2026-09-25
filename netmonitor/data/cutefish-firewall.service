@@ -1,0 +1,14 @@
+[Unit]
+Description=Cutefish inbound firewall
+Documentation=file:///usr/share/doc/cutefish-netmonitor/README
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/cutefish/cutefish-firewall.nft
+ExecStop=/usr/sbin/nft delete table inet cutefish_firewall
+
+[Install]
+WantedBy=multi-user.target

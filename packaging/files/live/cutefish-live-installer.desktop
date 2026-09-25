@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Install Cutefish OS
+Exec=sh -c 'grep -qw boot=casper /proc/cmdline && exec /usr/bin/calamares-launch-normal'
+Icon=system-software-install
+OnlyShowIn=Cutefish;
+NoDisplay=true

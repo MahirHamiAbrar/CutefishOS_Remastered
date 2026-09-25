@@ -1,0 +1,18 @@
+{
+  "created": "2026-09-25T00:00:00Z",
+  "updated": "2026-09-25T00:00:00Z",
+  "name": "cutefish-system-localhost",
+  "description": "Cutefish default: loopback",
+  "enabled": true,
+  "precedence": true,
+  "nolog": true,
+  "action": "allow",
+  "duration": "always",
+  "operator": {
+    "type": "regexp",
+    "operand": "dest.ip",
+    "sensitive": false,
+    "data": "^(127\\.|::1$)",
+    "list": []
+  }
+}

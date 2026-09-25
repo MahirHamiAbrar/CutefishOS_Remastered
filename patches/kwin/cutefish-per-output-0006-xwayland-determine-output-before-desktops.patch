@@ -1,0 +1,286 @@
+From 5b815636ef6291cbca46d8a197fc46814985d629 Mon Sep 17 00:00:00 2001
+From: Hynek Schlindenbuch <schlindenbuch.h@seznam.cz>
+Date: Sat, 7 Mar 2026 10:57:22 +0100
+Subject: [PATCH] xwayland: determine output before desktops
+
+This fixes the following issues with Jetbrains IDE (idea) running under
+XWayland (2 outputs, different desktops):
+
+- If a dialog (e.g. find class) opened on another output with different
+  desktop, it caused that output's desktop to change to the dialog's
+  desktop.
+- When the IDE starts there's a splash screen. The splash screen seems
+  to open on the primary output. If the IDE was opened on another
+  output, it caused the active output's desktop to change.
+---
+ autotests/integration/x11_window_test.cpp |  32 ++++
+ src/x11window.cpp                         | 196 +++++++++++-----------
+ 2 files changed, 130 insertions(+), 98 deletions(-)
+
+diff --git a/autotests/integration/x11_window_test.cpp b/autotests/integration/x11_window_test.cpp
+index 5391590f72..37428f47da 100644
+--- a/autotests/integration/x11_window_test.cpp
++++ b/autotests/integration/x11_window_test.cpp
+@@ -108,6 +108,7 @@ private Q_SLOTS:
+     void testCloseInactiveTransient();
+     void testCloseGroupTransient();
+     void testCloseInactiveGroupTransient();
++    void testTransientOnAnotherOutputWithPerOutputDesktops();
+     void testModal();
+     void testGroupModal();
+     void testCloseModal();
+@@ -2590,6 +2591,37 @@ void X11WindowTest::testCloseInactiveGroupTransient()
+     QCOMPARE(workspace()->activeWindow(), unrelated);
+ }
+ 
++void X11WindowTest::testTransientOnAnotherOutputWithPerOutputDesktops()
++{
++    // This test verifies that when a transient is opened on another output, it's opened on that output's current desktop instead of the parent's desktop.
++
++    VirtualDesktopManager::self()->setCount(2);
++    VirtualDesktopManager::self()->setPerOutputVirtualDesktops(true);
++
++    auto outputs = workspace()->outputs();
++    QCOMPARE(outputs.count(), 2);
++    const auto desktops = VirtualDesktopManager::self()->desktops();
++    VirtualDesktopManager::self()->setCurrent(desktops[0], outputs[0]);
++    VirtualDesktopManager::self()->setCurrent(desktops[1], outputs[1]);
++
++    // Create a parent and a child windows.
++    Test::XcbConnectionPtr c = Test::createX11Connection();
++    QVERIFY(!xcb_connection_has_error(c.get()));
++    X11Window *parent = createWindow(c.get(), Rect(0, 0, 100, 200));
++    X11Window *child = createWindow(c.get(), Rect(Xcb::toXNative(1500), 0, 100, 200), [&c, &parent](xcb_window_t windowId) {
++        xcb_icccm_set_wm_transient_for(c.get(), windowId, parent->window());
++    });
++    QVERIFY(child->isTransient());
++    QCOMPARE(child->transientFor(), parent);
++    QVERIFY(parent->hasTransient(child, true));
++    QCOMPARE(parent->output(), outputs[0]);
++    QCOMPARE(parent->desktops(), {desktops[0]});
++    QCOMPARE(child->output(), outputs[1]);
++    QCOMPARE(child->desktops(), {desktops[1]});
++    QCOMPARE(VirtualDesktopManager::self()->currentDesktop(outputs[0]), desktops[0]);
++    QCOMPARE(VirtualDesktopManager::self()->currentDesktop(outputs[1]), desktops[1]);
++}
++
+ void X11WindowTest::testModal()
+ {
+     // Create a parent and a child windows.
+diff --git a/src/x11window.cpp b/src/x11window.cpp
+index 8bc937816d..a857fca72f 100644
+--- a/src/x11window.cpp
++++ b/src/x11window.cpp
+@@ -478,104 +478,6 @@ bool X11Window::manage(xcb_window_t w, bool isMapped)
+ 
+     readActivities(activitiesCookie);
+ 
+-    // Initial desktop placement
+-    std::optional<QList<VirtualDesktop *>> initialDesktops;
+-    if (session) {
+-        if (session->onAllDesktops) {
+-            initialDesktops = QList<VirtualDesktop *>{};
+-        } else {
+-            VirtualDesktop *desktop = VirtualDesktopManager::self()->desktopForX11Id(session->desktop);
+-            if (desktop) {
+-                initialDesktops = QList<VirtualDesktop *>{desktop};
+-            }
+-        }
+-        setOnActivities(session->activities);
+-    } else {
+-        // If this window is transient, ensure that it is opened on the
+-        // same window as its parent.  this is necessary when an application
+-        // starts up on a different desktop than is currently displayed
+-        if (isTransient()) {
+-            auto mainwindows = mainWindows();
+-            bool on_current = false;
+-            bool on_all = false;
+-            Window *maincl = nullptr;
+-            // This is slightly duplicated from Placement::placeOnMainWindow()
+-            for (auto it = mainwindows.constBegin(); it != mainwindows.constEnd(); ++it) {
+-                if (mainwindows.count() > 1 && // A group-transient
+-                    (*it)->isSpecialWindow() && // Don't consider toolbars etc when placing
+-                    !(info->state() & NET::Modal)) { // except when it's modal (blocks specials as well)
+-                    continue;
+-                }
+-                maincl = *it;
+-                if ((*it)->isOnCurrentDesktop()) {
+-                    on_current = true;
+-                }
+-                if ((*it)->isOnAllDesktops()) {
+-                    on_all = true;
+-                }
+-            }
+-            if (on_all) {
+-                initialDesktops = QList<VirtualDesktop *>{};
+-            } else if (on_current) {
+-                initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop(output())};
+-            } else if (maincl) {
+-                initialDesktops = maincl->desktops();
+-            }
+-
+-            if (maincl) {
+-                setOnActivities(maincl->activities());
+-            }
+-        } else if (RootInfo::desktopEnabled()) { // a transient shall appear on its leader and not drag that around
+-            int desktopId = 0;
+-            if (info->desktop()) {
+-                desktopId = info->desktop(); // Window had the initial desktop property, force it
+-            }
+-            if (desktopId == 0 && asn_valid && asn_data.desktop() != 0) {
+-                desktopId = asn_data.desktop();
+-            }
+-            if (desktopId) {
+-                if (desktopId == NET::OnAllDesktops) {
+-                    initialDesktops = QList<VirtualDesktop *>{};
+-                } else {
+-                    VirtualDesktop *desktop = VirtualDesktopManager::self()->desktopForX11Id(desktopId);
+-                    if (desktop) {
+-                        initialDesktops = QList<VirtualDesktop *>{desktop};
+-                    }
+-                }
+-            }
+-        }
+-#if KWIN_BUILD_ACTIVITIES
+-        if (Workspace::self()->activities() && !isMapped && !skipTaskbar() && isNormalWindow() && !activitiesDefined) {
+-            // a new, regular window, when we're not recovering from a crash,
+-            // and it hasn't got an activity. let's try giving it the current one.
+-            // TODO: decide whether to keep this before the 4.6 release
+-            // TODO: if we are keeping it (at least as an option), replace noborder checking
+-            // with a public API for setting windows to be on all activities.
+-            // something like KWindowSystem::setOnAllActivities or
+-            // KActivityConsumer::setOnAllActivities
+-            setOnActivity(Workspace::self()->activities()->current(), true);
+-        }
+-#endif
+-    }
+-
+-    // If initialDesktops has no value, it means that the client doesn't prefer any
+-    // desktop so place it on the current virtual desktop.
+-    if (!initialDesktops.has_value()) {
+-        if (isDesktop()) {
+-            initialDesktops = QList<VirtualDesktop *>{};
+-        } else {
+-            initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop(output())};
+-        }
+-    }
+-    setDesktops(rules()->checkDesktops(*initialDesktops, !isMapped));
+-    if (RootInfo::desktopEnabled()) {
+-        info->setDesktop(desktopId());
+-    } else {
+-        info->setDesktop(1);
+-    }
+-    workspace()->updateOnAllDesktopsOfTransients(this); // SELI TODO
+-    // onAllDesktopsChange(); // Decoration doesn't exist here yet
+-
+     QStringList activitiesList;
+     activitiesList = rules()->checkActivity(activitiesList, !isMapped);
+     if (!activitiesList.isEmpty()) {
+@@ -757,6 +659,104 @@ bool X11Window::manage(xcb_window_t w, bool isMapped)
+         moveResize(keepInArea(moveResizeGeometry(), area, partial_keep_in_area));
+     }
+ 
++    // Initial desktop placement
++    std::optional<QList<VirtualDesktop *>> initialDesktops;
++    if (session) {
++        if (session->onAllDesktops) {
++            initialDesktops = QList<VirtualDesktop *>{};
++        } else {
++            VirtualDesktop *desktop = VirtualDesktopManager::self()->desktopForX11Id(session->desktop);
++            if (desktop) {
++                initialDesktops = QList<VirtualDesktop *>{desktop};
++            }
++        }
++        setOnActivities(session->activities);
++    } else {
++        // If this window is transient, ensure that it is opened on the
++        // same window as its parent.  this is necessary when an application
++        // starts up on a different desktop than is currently displayed
++        if (isTransient()) {
++            auto mainwindows = mainWindows();
++            bool on_current = false;
++            bool on_all = false;
++            Window *maincl = nullptr;
++            // This is slightly duplicated from Placement::placeOnMainWindow()
++            for (auto it = mainwindows.constBegin(); it != mainwindows.constEnd(); ++it) {
++                if (mainwindows.count() > 1 && // A group-transient
++                    (*it)->isSpecialWindow() && // Don't consider toolbars etc when placing
++                    !(info->state() & NET::Modal)) { // except when it's modal (blocks specials as well)
++                    continue;
++                }
++                maincl = *it;
++                if ((*it)->isOnCurrentDesktop()) {
++                    on_current = true;
++                }
++                if ((*it)->isOnAllDesktops()) {
++                    on_all = true;
++                }
++            }
++            if (on_all) {
++                initialDesktops = QList<VirtualDesktop *>{};
++            } else if (on_current) {
++                initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop(output())};
++            } else if (maincl) {
++                initialDesktops = maincl->desktops();
++            }
++
++            if (maincl) {
++                setOnActivities(maincl->activities());
++            }
++        } else if (RootInfo::desktopEnabled()) { // a transient shall appear on its leader and not drag that around
++            int desktopId = 0;
++            if (info->desktop()) {
++                desktopId = info->desktop(); // Window had the initial desktop property, force it
++            }
++            if (desktopId == 0 && asn_valid && asn_data.desktop() != 0) {
++                desktopId = asn_data.desktop();
++            }
++            if (desktopId) {
++                if (desktopId == NET::OnAllDesktops) {
++                    initialDesktops = QList<VirtualDesktop *>{};
++                } else {
++                    VirtualDesktop *desktop = VirtualDesktopManager::self()->desktopForX11Id(desktopId);
++                    if (desktop) {
++                        initialDesktops = QList<VirtualDesktop *>{desktop};
++                    }
++                }
++            }
++        }
++#if KWIN_BUILD_ACTIVITIES
++        if (Workspace::self()->activities() && !isMapped && !skipTaskbar() && isNormalWindow() && !activitiesDefined) {
++            // a new, regular window, when we're not recovering from a crash,
++            // and it hasn't got an activity. let's try giving it the current one.
++            // TODO: decide whether to keep this before the 4.6 release
++            // TODO: if we are keeping it (at least as an option), replace noborder checking
++            // with a public API for setting windows to be on all activities.
++            // something like KWindowSystem::setOnAllActivities or
++            // KActivityConsumer::setOnAllActivities
++            setOnActivity(Workspace::self()->activities()->current(), true);
++        }
++#endif
++    }
++
++    // If initialDesktops has no value, it means that the client doesn't prefer any
++    // desktop so place it on the current virtual desktop.
++    if (!initialDesktops.has_value()) {
++        if (isDesktop()) {
++            initialDesktops = QList<VirtualDesktop *>{};
++        } else {
++            initialDesktops = QList<VirtualDesktop *>{VirtualDesktopManager::self()->currentDesktop(output())};
++        }
++    }
++    setDesktops(rules()->checkDesktops(*initialDesktops, !isMapped));
++    if (RootInfo::desktopEnabled()) {
++        info->setDesktop(desktopId());
++    } else {
++        info->setDesktop(1);
++    }
++    workspace()->updateOnAllDesktopsOfTransients(this); // SELI TODO
++    // onAllDesktopsChange(); // Decoration doesn't exist here yet
++
+     // CT: Extra check for stupid jdk 1.3.1. But should make sense in general
+     // if client has initial state set to Iconic and is transient with a parent
+     // window that is not Iconic, set init_state to Normal
+-- 
+2.43.0
+

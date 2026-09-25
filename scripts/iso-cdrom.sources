@@ -1,0 +1,7 @@
+# The installer's before_bootloader step installs grub/shim from the live
+# medium (calamares-settings-ubuntu-common). The live image already contains
+# them, so this flat repository on the ISO is empty.
+Types: deb
+URIs: file:/cdrom/pool/
+Suites: ./
+Trusted: yes

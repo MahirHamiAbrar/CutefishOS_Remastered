@@ -1,0 +1,6 @@
+calamares/settings.conf etc/calamares
+calamares/modules etc/calamares
+calamares/branding etc/calamares
+calamares/calamares-launch-normal usr/bin
+calamares/calamares-logs-helper usr/bin
+calamares/cutefish-calamares.desktop usr/share/applications

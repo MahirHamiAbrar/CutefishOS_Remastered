@@ -1,0 +1,160 @@
+From ae2e1ffd5ee9e00b59a6aae2819be56cabd0b2d3 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:32 +0600
+Subject: [PATCH] Cutefish Remastered: kwin-plugins changes
+
+- Cutefish Remastered: blur group fix, separate Spaces per display, shortcuts
+---
+ config/kglobalshortcutsrc               |  5 +++++
+ config/kwinrc                           | 17 ++++++++++++++++-
+ debian/changelog                        |  8 ++++++++
+ debian/control                          |  5 +++--
+ plugins/roundedwindow/roundedwindow.cpp |  7 ++++---
+ plugins/roundedwindow/roundedwindow.h   |  5 +++--
+ 6 files changed, 39 insertions(+), 8 deletions(-)
+
+diff --git a/config/kglobalshortcutsrc b/config/kglobalshortcutsrc
+index 14ad4f1..a5b5194 100644
+--- a/config/kglobalshortcutsrc
++++ b/config/kglobalshortcutsrc
+@@ -4,3 +4,8 @@ Window Absolute Maximize=Meta+Up,none,Maximize
+ Window Unmaximize=Meta+Down,none,Unmaximize
+ Walk Through Windows=Alt+Tab,Alt+Tab,Walk Through Windows
+ Walk Through Windows (Reverse)=Alt+Shift+Tab,Alt+Shift+Tab,Walk Through Windows (Reverse)
++Overview=Meta+W,Meta+W,Toggle Overview
++Switch One Desktop to the Left=Meta+Ctrl+Left,Meta+Ctrl+Left,Switch One Desktop to the Left
++Switch One Desktop to the Right=Meta+Ctrl+Right,Meta+Ctrl+Right,Switch One Desktop to the Right
++Window One Desktop to the Left=Meta+Ctrl+Shift+Left,Meta+Ctrl+Shift+Left,Window One Desktop to the Left
++Window One Desktop to the Right=Meta+Ctrl+Shift+Right,Meta+Ctrl+Shift+Right,Window One Desktop to the Right
+diff --git a/config/kwinrc b/config/kwinrc
+index 2a6c203..69a7226 100644
+--- a/config/kwinrc
++++ b/config/kwinrc
+@@ -15,11 +15,22 @@ glideEnabled=false
+ magiclampEnabled=true
+ translucencyEnabled=false
+ 
+-[Effect-Blur]
++# Switching Spaces: the Slide effect in our KWin 6.6 backport is not per-output
++# aware, fadedesktop is (see docs/multi-display.md).
++slideEnabled=false
++fadedesktopEnabled=true
++overviewEnabled=true
++
++# KConfig group names are case-sensitive: KWin's blur effect reads "Effect-blur".
++[Effect-blur]
+ BlurStrength=15
+ NoiseStrength=0
++# Apps whose whole window is blurred (Settings > Appearance > Blur edits this).
++ForceBlurClasses=
+ 
+ [Windows]
++# macOS "Displays have separate Spaces" (per-output virtual desktops backport).
++PerOutputVirtualDesktops=true
+ FocusStealingPreventionLevel=0
+ HideUtilityWindowsForInactive=false
+ BorderlessMaximizedWindows=false
+@@ -59,3 +70,7 @@ ButtonsOnLeft=
+ ButtonsOnRight=HIAX
+ library=org.cutefish.decoration
+ theme=
++
++[Desktops]
++Number=2
++Rows=1
+diff --git a/debian/changelog b/debian/changelog
+index 50fa4bb..29552b9 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,11 @@
++cutefish-kwin-plugins (0.8+remastered1) resolute; urgency=medium
++
++  * Depend on the Cutefish KWin build (per-output desktops, ForceBlurClasses).
++  * kwinrc: fix blur group name, enable separate Spaces per display,
++    fadedesktop instead of slide, Overview and Space shortcuts.
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:37:15 +0600
++
+ cutefish-kwin-plugins (0.8) UNRELEASED; urgency=low
+ 
+   * Initial release (CutefishOS)  <support@cutefishos.com>
+diff --git a/debian/control b/debian/control
+index 8d6b62e..6f65e3b 100644
+--- a/debian/control
++++ b/debian/control
+@@ -5,7 +5,7 @@ Maintainer: CutefishOS <cutefishos@foxmail.com>
+ Build-Depends: cmake,
+                debhelper (>= 9),
+                extra-cmake-modules,
+-               kwin-dev,
++               kwin-dev (>= 4:6.6.6-0ubuntu0.1+cutefish1),
+                libkdecorations3-dev,
+                libkf6config-dev,
+                libkf6coreaddons-dev,
+@@ -21,7 +21,8 @@ Homepage: https://cutefishos.com
+ Package: cutefish-kwin-plugins
+ Architecture: any
+ Depends: fishui,
+-         kwin-common,
++         kwin-common (>= 4:6.6.6-0ubuntu0.1+cutefish1),
++         kwin-wayland (>= 4:6.6.6-0ubuntu0.1+cutefish1),
+          qml6-module-qtquick,
+          qml6-module-qtquick-controls,
+          qml6-module-qtquick-layouts,
+diff --git a/plugins/roundedwindow/roundedwindow.cpp b/plugins/roundedwindow/roundedwindow.cpp
+index 121799d..fcfc57f 100644
+--- a/plugins/roundedwindow/roundedwindow.cpp
++++ b/plugins/roundedwindow/roundedwindow.cpp
+@@ -337,7 +337,8 @@ KWin::GLShader *RoundedWindow::shader()
+     return m_shader.get();
+ }
+ 
+-void RoundedWindow::prePaintWindow(KWin::EffectWindow *window,
++void RoundedWindow::prePaintWindow(KWin::RenderView *view,
++                        KWin::EffectWindow *window,
+                                    KWin::WindowPrePaintData &data,
+                                    std::chrono::milliseconds presentTime)
+ {
+@@ -352,14 +353,14 @@ void RoundedWindow::prePaintWindow(KWin::EffectWindow *window,
+         }
+     }
+ 
+-    KWin::OffscreenEffect::prePaintWindow(window, data, presentTime);
++    KWin::OffscreenEffect::prePaintWindow(view, window, data, presentTime);
+ }
+ 
+ void RoundedWindow::drawWindow(const KWin::RenderTarget &renderTarget,
+                                const KWin::RenderViewport &viewport,
+                                KWin::EffectWindow *window,
+                                int mask,
+-                               const QRegion &region,
++                               const KWin::Region &region,
+                                KWin::WindowPaintData &data)
+ {
+     const bool transformed = mask & KWin::Effect::PAINT_WINDOW_TRANSFORMED;
+diff --git a/plugins/roundedwindow/roundedwindow.h b/plugins/roundedwindow/roundedwindow.h
+index 9f9562d..c448b47 100644
+--- a/plugins/roundedwindow/roundedwindow.h
++++ b/plugins/roundedwindow/roundedwindow.h
+@@ -32,7 +32,8 @@ public:
+ 
+     int requestedEffectChainPosition() const override { return 99; }
+ 
+-    void prePaintWindow(KWin::EffectWindow *window,
++    void prePaintWindow(KWin::RenderView *view,
++                        KWin::EffectWindow *window,
+                         KWin::WindowPrePaintData &data,
+                         std::chrono::milliseconds presentTime) override;
+ 
+@@ -40,7 +41,7 @@ public:
+                     const KWin::RenderViewport &viewport,
+                     KWin::EffectWindow *window,
+                     int mask,
+-                    const QRegion &region,
++                    const KWin::Region &region,
+                     KWin::WindowPaintData &data) override;
+ 
+ private:
+-- 
+2.43.0
+

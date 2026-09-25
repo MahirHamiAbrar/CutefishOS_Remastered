@@ -1,0 +1,130 @@
+From 5d57960c656138ead67e79846a4cc7016bcab470 Mon Sep 17 00:00:00 2001
+From: Hynek Schlindenbuch <schlindenbuch.h@seznam.cz>
+Date: Fri, 27 Mar 2026 12:47:36 +0100
+Subject: [PATCH] autotests/wayland: test per-output desktops
+
+---
+ .../client/test_plasma_virtual_desktop.cpp    | 31 +++++++++++++++++++
+ src/virtualdesktops.cpp                       |  2 +-
+ src/wayland/plasmavirtualdesktop.cpp          |  7 ++---
+ src/wayland/plasmavirtualdesktop.h            |  3 +-
+ 4 files changed, 36 insertions(+), 7 deletions(-)
+
+diff --git a/autotests/wayland/client/test_plasma_virtual_desktop.cpp b/autotests/wayland/client/test_plasma_virtual_desktop.cpp
+index 0e9105b162..5b8d9c5557 100644
+--- a/autotests/wayland/client/test_plasma_virtual_desktop.cpp
++++ b/autotests/wayland/client/test_plasma_virtual_desktop.cpp
+@@ -35,6 +35,7 @@ private Q_SLOTS:
+     void testConnectNewClient();
+     void testDestroy();
+     void testActivate();
++    void testOutputEntered();
+ 
+     void testEnterLeaveDesktop();
+     void testAllDesktops();
+@@ -368,6 +369,36 @@ void TestVirtualDesktop::testActivate()
+     QVERIFY(deactivatedSpy.wait());
+ }
+ 
++void TestVirtualDesktop::testOutputEntered()
++{
++    // rebuild some desktops
++    testCreate();
++
++    QString outputName1("Output 1");
++    QString outputName2("Output 2");
++    KWin::PlasmaVirtualDesktopInterface *desktop1Int = m_plasmaVirtualDesktopManagementInterface->desktops().at(0);
++    KWin::PlasmaVirtualDesktopInterface *desktop2Int = m_plasmaVirtualDesktopManagementInterface->desktops().at(1);
++    KWayland::Client::PlasmaVirtualDesktop *desktop1 = m_plasmaVirtualDesktopManagement->desktops().at(0);
++    KWayland::Client::PlasmaVirtualDesktop *desktop2 = m_plasmaVirtualDesktopManagement->desktops().at(1);
++
++    QSignalSpy outputEnteredSpy1(desktop1, &KWayland::Client::PlasmaVirtualDesktop::outputEntered);
++    QSignalSpy outputEnteredSpy2(desktop2, &KWayland::Client::PlasmaVirtualDesktop::outputEntered);
++
++    m_plasmaVirtualDesktopManagementInterface->setActiveDesktopForOutput({}, desktop1Int->id(), outputName1);
++    QVERIFY(outputEnteredSpy1.wait());
++    QCOMPARE(m_plasmaVirtualDesktopManagement->currentDesktopByOutputName(outputName1), desktop1);
++    QCOMPARE(m_plasmaVirtualDesktopManagement->currentDesktopByOutputName(outputName2), nullptr);
++
++    m_plasmaVirtualDesktopManagementInterface->setActiveDesktopForOutput({}, desktop2Int->id(), outputName2);
++    QVERIFY(outputEnteredSpy2.wait());
++    QCOMPARE(m_plasmaVirtualDesktopManagement->currentDesktopByOutputName(outputName1), desktop1);
++    QCOMPARE(m_plasmaVirtualDesktopManagement->currentDesktopByOutputName(outputName2), desktop2);
++
++    QSignalSpy enterOutputRequestedSpy2(desktop2Int, &KWin::PlasmaVirtualDesktopInterface::enterOutputRequested);
++    desktop2->requestEnterOutput(outputName1);
++    QVERIFY(enterOutputRequestedSpy2.wait());
++}
++
+ void TestVirtualDesktop::testEnterLeaveDesktop()
+ {
+     testCreate();
+diff --git a/src/virtualdesktops.cpp b/src/virtualdesktops.cpp
+index ce12a5af8c..a67ff3a6c2 100644
+--- a/src/virtualdesktops.cpp
++++ b/src/virtualdesktops.cpp
+@@ -110,7 +110,7 @@ void VirtualDesktopManager::setVirtualDesktopManagement(PlasmaVirtualDesktopMana
+     });
+ 
+     connect(this, &VirtualDesktopManager::currentChanged, m_virtualDesktopManagement, [this](VirtualDesktop *oldDesktop, VirtualDesktop *newDesktop, LogicalOutput *output) {
+-        m_virtualDesktopManagement->setActiveDesktopForOutput(oldDesktop->id(), newDesktop->id(), output);
++        m_virtualDesktopManagement->setActiveDesktopForOutput(oldDesktop->id(), newDesktop->id(), output->name());
+ 
+         if (output == workspace()->activeOutput()) {
+             updateLegacyPlasmaVirtualDesktops(newDesktop);
+diff --git a/src/wayland/plasmavirtualdesktop.cpp b/src/wayland/plasmavirtualdesktop.cpp
+index b71664038f..43ad10d378 100644
+--- a/src/wayland/plasmavirtualdesktop.cpp
++++ b/src/wayland/plasmavirtualdesktop.cpp
+@@ -5,7 +5,6 @@
+ */
+ #include "plasmavirtualdesktop.h"
+ #include "display.h"
+-#include "output.h"
+ #include "wayland/quirks.h"
+ 
+ #include <QDebug>
+@@ -216,16 +215,16 @@ void PlasmaVirtualDesktopManagementInterface::removeDesktop(const QString &id)
+     }
+ }
+ 
+-void PlasmaVirtualDesktopManagementInterface::setActiveDesktopForOutput(const QString &previousDesktopId, const QString &activeDesktopId, LogicalOutput *output)
++void PlasmaVirtualDesktopManagementInterface::setActiveDesktopForOutput(const QString &previousDesktopId, const QString &activeDesktopId, const QString &outputName)
+ {
+     PlasmaVirtualDesktopInterface *activeDesktop = desktop(activeDesktopId);
+     if (activeDesktop) {
+-        activeDesktop->sendOutputEntered(output->name());
++        activeDesktop->enterOutput(outputName);
+     }
+ 
+     PlasmaVirtualDesktopInterface *previousDesktop = desktop(previousDesktopId);
+     if (previousDesktop) {
+-        previousDesktop->leaveOutput(output->name());
++        previousDesktop->leaveOutput(outputName);
+     }
+ }
+ 
+diff --git a/src/wayland/plasmavirtualdesktop.h b/src/wayland/plasmavirtualdesktop.h
+index 295cc1bfe0..76a522f38e 100644
+--- a/src/wayland/plasmavirtualdesktop.h
++++ b/src/wayland/plasmavirtualdesktop.h
+@@ -13,7 +13,6 @@
+ namespace KWin
+ {
+ class Display;
+-class LogicalOutput;
+ class PlasmaVirtualDesktopInterface;
+ class PlasmaVirtualDesktopInterfacePrivate;
+ class PlasmaVirtualDesktopManagementInterfacePrivate;
+@@ -58,7 +57,7 @@ public:
+      */
+     void removeDesktop(const QString &id);
+ 
+-    void setActiveDesktopForOutput(const QString &previousDesktopId, const QString &activeDesktopId, LogicalOutput *output);
++    void setActiveDesktopForOutput(const QString &previousDesktopId, const QString &activeDesktopId, const QString &outputName);
+ 
+     /**
+      * @returns All the desktops present.
+-- 
+2.43.0
+

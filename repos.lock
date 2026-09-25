@@ -1,0 +1,20 @@
+# name url sha
+fishui https://github.com/cutefishos/fishui.git 77e84001da0b9a8d29797b0c8b850532c771c9da
+cutefish-framework https://github.com/cutefishos/cutefish-framework.git b4ea1e83c077e1a2d20df305565c3faa201167c0
+qt-plugins https://github.com/cutefishos/qt-plugins.git bf650f604700ae3ee8297328984c6dbaa9b95598
+filemanager https://github.com/cutefishos/filemanager.git 59fa83a5e62ce1d6d86d0a4e64c671f958039534
+shell https://github.com/cutefishos/shell.git 50d47428b925b014ffbb8e824586a095c1bfcfb6
+core https://github.com/cutefishos/core.git 1dc644326c18b9495b5a707a1075d15538eb328b
+settings https://github.com/cutefishos/settings.git de043226530b6ce2ca0121022295f83d8938163b
+kwin-plugins https://github.com/cutefishos/kwin-plugins.git 5df71a4e684682e33b5630b7831206d504158937
+terminal https://github.com/cutefishos/terminal.git cf5ab4cb24b60d329e9664a5339e8011209c4a29
+icons https://github.com/cutefishos/icons.git 4684a9c9dc31c131613ffa23cadd67a7402d8af6
+wallpapers https://github.com/cutefishos/wallpapers.git b73e043a512e2fe1b07aaff0b759a83bf63032ef
+sddm-theme https://github.com/cutefishos/sddm-theme.git a3741dab28179f4697b7af606817c12dc4ab6c19
+screenshot https://github.com/cutefishos/screenshot.git 2b5ce06de6f78a161d4d389e1b2775f2ec09464a
+calculator https://github.com/cutefishos/calculator.git 6cce31e310ae68fa5aafa9b9e92f542c37db19ae
+gtk-themes https://github.com/cutefishos/gtk-themes.git 91f762fc2b069c4754d7e5741e07613bfea049a4
+cursor-themes https://github.com/cutefishos/cursor-themes.git 8e5fdf14ca520711e63d39d581ab4137a6782f75
+plymouth-theme https://github.com/cutefishos/plymouth-theme.git ff14c17a19f551563c6bd98fe37428fefd5cbb25
+cutefish-calamares-settings https://github.com/cutefishos-ubuntu/cutefish-calamares-settings.git 0bfcd6d1303e04065c7698b60303d37d22d3ae77
+texteditor https://github.com/cutefishs/texteditor.git d7e038e300486afe2f5551bc4896b96629087fea

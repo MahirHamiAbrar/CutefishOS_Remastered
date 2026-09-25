@@ -1,0 +1,577 @@
+From 792b2249a3abb4b7e7878521b4b89f2d2a1d9c0c Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Fri, 25 Sep 2026 22:14:33 +0600
+Subject: [PATCH] Cutefish Remastered: shell changes
+
+- debian: add packaging for Ubuntu 26.04
+- Status bar on every display; app menu follows the active window's display
+---
+ debian/changelog                            | 11 +++++++
+ debian/control                              | 36 +++++++++++++++++++++
+ debian/copyright                            |  7 ++++
+ debian/rules                                |  4 +++
+ debian/source/format                        |  1 +
+ src/core/services/screenhelper.cpp          | 15 +++++++--
+ src/core/services/screenhelper.h            |  6 ++++
+ src/core/wayland/kwinwaylandinterface.cpp   |  2 ++
+ src/core/wayland/kwinwaylandinterface.h     |  2 ++
+ src/shell.cpp                               | 30 +++++++++++++++++
+ src/shell.h                                 |  6 ++++
+ src/statusbar/appmenu/appmenumodel.cpp      |  5 +++
+ src/statusbar/appmenu/appmenumodel.h        |  6 ++++
+ src/statusbar/qml/main.qml                  | 32 +++++++++++++++---
+ src/statusbar/statusbar.cpp                 | 20 +++++++++---
+ src/statusbar/statusbar.h                   |  6 +++-
+ src/statusbar/statusbarforegroundhelper.cpp | 11 ++++++-
+ src/statusbar/statusbarforegroundhelper.h   |  6 ++++
+ 18 files changed, 192 insertions(+), 14 deletions(-)
+ create mode 100644 debian/changelog
+ create mode 100644 debian/control
+ create mode 100644 debian/copyright
+ create mode 100755 debian/rules
+ create mode 100644 debian/source/format
+
+diff --git a/debian/changelog b/debian/changelog
+new file mode 100644
+index 0000000..f0825cf
+--- /dev/null
++++ b/debian/changelog
+@@ -0,0 +1,11 @@
++cutefish-shell (0.8+remastered2) resolute; urgency=medium
++
++  * Status bar on every display; app menu follows the active window's display
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:41:08 +0600
++
++cutefish-shell (0.8+remastered1) resolute; urgency=medium
++
++  * Add Debian packaging (upstream shell repo ships none).
++
++ -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 21:31:33 +0600
+diff --git a/debian/control b/debian/control
+new file mode 100644
+index 0000000..656f568
+--- /dev/null
++++ b/debian/control
+@@ -0,0 +1,36 @@
++Source: cutefish-shell
++Section: x11
++Priority: optional
++Maintainer: CutefishOS <support@cutefishos.com>
++Build-Depends: cmake,
++               debhelper-compat (= 13),
++               extra-cmake-modules,
++               kwayland-dev,
++               libwayland-dev,
++               pkg-config,
++               qt6-base-dev,
++               qt6-base-private-dev,
++               qt6-declarative-dev,
++               qt6-tools-dev,
++               qt6-tools-dev-tools,
++               qt6-wayland-dev
++Standards-Version: 4.6.2
++Homepage: https://github.com/cutefishos/shell
++
++Package: cutefish-shell
++Architecture: any
++Depends: fishui,
++         libcutefish,
++         cutefish-filemanager,
++         qml6-module-qtquick,
++         qml6-module-qtquick-controls,
++         qml6-module-qtquick-layouts,
++         qml6-module-qtquick-window,
++         qml6-module-qtquick-effects,
++         qml6-module-qtqml,
++         ${misc:Depends},
++         ${shlibs:Depends}
++Breaks: cutefish-dock, cutefish-statusbar, cutefish-launcher
++Replaces: cutefish-dock, cutefish-statusbar, cutefish-launcher
++Description: Cutefish desktop shell
++ Status bar, dock, launcher, notifications and desktop in one process.
+diff --git a/debian/copyright b/debian/copyright
+new file mode 100644
+index 0000000..6bbceeb
+--- /dev/null
++++ b/debian/copyright
+@@ -0,0 +1,7 @@
++Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
++Upstream-Name: shell
++Source: https://github.com/cutefishos/shell
++
++Files: *
++Copyright: 2021-2026 CutefishOS Team
++License: GPL-3+
+diff --git a/debian/rules b/debian/rules
+new file mode 100755
+index 0000000..2d33f6a
+--- /dev/null
++++ b/debian/rules
+@@ -0,0 +1,4 @@
++#!/usr/bin/make -f
++
++%:
++	dh $@
+diff --git a/debian/source/format b/debian/source/format
+new file mode 100644
+index 0000000..89ae9db
+--- /dev/null
++++ b/debian/source/format
+@@ -0,0 +1 @@
++3.0 (native)
+diff --git a/src/core/services/screenhelper.cpp b/src/core/services/screenhelper.cpp
+index 52b39e9..ae9343a 100644
+--- a/src/core/services/screenhelper.cpp
++++ b/src/core/services/screenhelper.cpp
+@@ -44,7 +44,7 @@ void ScreenHelper::watchPrimaryScreen()
+     if (m_screen)
+         m_screen->disconnect(this);
+ 
+-    m_screen = qApp->primaryScreen();
++    m_screen = m_targetScreen ? m_targetScreen.data() : qApp->primaryScreen();
+ 
+     if (m_screen) {
+         connect(m_screen, &QScreen::geometryChanged, this, &ScreenHelper::screenGeometryChanged);
+@@ -56,12 +56,21 @@ void ScreenHelper::watchPrimaryScreen()
+     emit availableScreenRectChanged();
+ }
+ 
++void ScreenHelper::setTargetScreen(QScreen *screen)
++{
++    if (m_targetScreen == screen)
++        return;
++
++    m_targetScreen = screen;
++    watchPrimaryScreen();
++}
++
+ QRect ScreenHelper::screenGeometry() const
+ {
+-    return qApp->primaryScreen()->geometry();
++    return m_screen ? m_screen->geometry() : QRect();
+ }
+ 
+ QRect ScreenHelper::availableScreenRect() const
+ {
+-    return StrutRegistry::self()->availableGeometry(qApp->primaryScreen());
++    return m_screen ? StrutRegistry::self()->availableGeometry(m_screen) : QRect();
+ }
+diff --git a/src/core/services/screenhelper.h b/src/core/services/screenhelper.h
+index 36b5d9e..6e1c5c2 100644
+--- a/src/core/services/screenhelper.h
++++ b/src/core/services/screenhelper.h
+@@ -31,6 +31,8 @@ class ScreenHelper : public QObject
+     Q_PROPERTY(QRect screenGeometry READ screenGeometry NOTIFY screenGeometryChanged)
+     //! In global coordinates, like QScreen::availableGeometry().
+     Q_PROPERTY(QRect availableScreenRect READ availableScreenRect NOTIFY availableScreenRectChanged)
++    //! The screen to describe. Unset (null) follows the primary screen.
++    Q_PROPERTY(QScreen *targetScreen READ targetScreen WRITE setTargetScreen NOTIFY screenGeometryChanged)
+ 
+ public:
+     explicit ScreenHelper(QObject *parent = nullptr);
+@@ -38,6 +40,9 @@ public:
+     QRect screenGeometry() const;
+     QRect availableScreenRect() const;
+ 
++    QScreen *targetScreen() const { return m_targetScreen; }
++    void setTargetScreen(QScreen *screen);
++
+ signals:
+     void screenGeometryChanged();
+     void availableScreenRectChanged();
+@@ -46,6 +51,7 @@ private:
+     void watchPrimaryScreen();
+ 
+     QPointer<QScreen> m_screen;
++    QPointer<QScreen> m_targetScreen;
+ };
+ 
+ #endif // SCREENHELPER_H
+diff --git a/src/core/wayland/kwinwaylandinterface.cpp b/src/core/wayland/kwinwaylandinterface.cpp
+index d138b90..903c136 100644
+--- a/src/core/wayland/kwinwaylandinterface.cpp
++++ b/src/core/wayland/kwinwaylandinterface.cpp
+@@ -219,6 +219,7 @@ KWinWaylandClient KWinWaylandInterface::toClient(PlasmaWindow *window) const
+     client.title = window->title();
+     client.initialTitle = client.title;
+     client.pid = window->pid();
++    client.geometry = window->geometry();
+     client.hidden = window->isMinimized();
+     client.skipTaskbar = window->skipTaskbar();
+     client.skipSwitcher = window->skipSwitcher();
+@@ -256,6 +257,7 @@ void KWinWaylandInterface::addWindow(PlasmaWindow *window)
+     connect(window, &PlasmaWindow::fullscreenChanged, this, [this, window] { updateWindow(window); });
+     connect(window, &PlasmaWindow::skipTaskbarChanged, this, [this, window] { updateWindow(window); });
+     connect(window, &PlasmaWindow::applicationMenuChanged, this, [this, window] { updateWindow(window); });
++    connect(window, &PlasmaWindow::geometryChanged, this, [this, window] { updateWindow(window); });
+     connect(window, &PlasmaWindow::unmapped, this, [this, id] { removeWindow(id); });
+ 
+     emit clientAdded(id);
+diff --git a/src/core/wayland/kwinwaylandinterface.h b/src/core/wayland/kwinwaylandinterface.h
+index 7e9dd65..444dff5 100644
+--- a/src/core/wayland/kwinwaylandinterface.h
++++ b/src/core/wayland/kwinwaylandinterface.h
+@@ -36,6 +36,7 @@ struct KWinWaylandClient
+     QString appMenuServiceName;
+     QString appMenuObjectPath;
+     qint64 pid = 0;
++    QRect geometry; // global, logical coordinates
+     bool mapped = true;
+     bool hidden = false;
+     bool skipTaskbar = false;
+@@ -54,6 +55,7 @@ struct KWinWaylandClient
+             && initialTitle == other.initialTitle && pid == other.pid
+             && appMenuServiceName == other.appMenuServiceName
+             && appMenuObjectPath == other.appMenuObjectPath
++            && geometry == other.geometry
+             && mapped == other.mapped && hidden == other.hidden
+             && skipTaskbar == other.skipTaskbar
+             && skipSwitcher == other.skipSwitcher
+diff --git a/src/shell.cpp b/src/shell.cpp
+index 3c157dc..f2278f2 100644
+--- a/src/shell.cpp
++++ b/src/shell.cpp
+@@ -1,5 +1,7 @@
+ #include "shell.h"
+ 
++#include <QScreen>
++
+ #include "core/qmltypes.h"
+ #include "core/services/processprovider.h"
+ #include "desktop/desktopmanager.h"
+@@ -74,9 +76,31 @@ Shell::~Shell()
+     delete m_desktops;
+     delete m_launcher;
+     delete m_dock;
++    qDeleteAll(m_secondaryStatusBars);
+     delete m_statusBar;
+ }
+ 
++void Shell::syncSecondaryStatusBars()
++{
++    QScreen *primary = QGuiApplication::primaryScreen();
++    const QList<QScreen *> screens = QGuiApplication::screens();
++
++    for (auto it = m_secondaryStatusBars.begin(); it != m_secondaryStatusBars.end();) {
++        if (it.key() == primary || !screens.contains(it.key())) {
++            it.value()->setVisible(false);
++            it.value()->deleteLater();
++            it = m_secondaryStatusBars.erase(it);
++        } else {
++            ++it;
++        }
++    }
++
++    for (QScreen *screen : screens) {
++        if (screen != primary && !m_secondaryStatusBars.contains(screen))
++            m_secondaryStatusBars.insert(screen, new StatusBar(m_engine, screen));
++    }
++}
++
+ void Shell::registerQmlTypes()
+ {
+     registerApplicationsQmlTypes();
+@@ -147,6 +171,12 @@ void Shell::start()
+     m_statusBar = new StatusBar(m_engine);
+     bus.registerObject(QStringLiteral("/Statusbar"), m_statusBar);
+ 
++    syncSecondaryStatusBars();
++    // Queued: the screen list and the primary screen settle after the signal.
++    connect(qGuiApp, &QGuiApplication::screenAdded, this, &Shell::syncSecondaryStatusBars, Qt::QueuedConnection);
++    connect(qGuiApp, &QGuiApplication::screenRemoved, this, &Shell::syncSecondaryStatusBars, Qt::QueuedConnection);
++    connect(qGuiApp, &QGuiApplication::primaryScreenChanged, this, &Shell::syncSecondaryStatusBars, Qt::QueuedConnection);
++
+     m_launcher = new Launcher(m_engine);
+     bus.registerObject(QStringLiteral("/Launcher"),
+                        QStringLiteral("com.cutefish.Launcher"), m_launcher);
+diff --git a/src/shell.h b/src/shell.h
+index 5d3f305..365ce2f 100644
+--- a/src/shell.h
++++ b/src/shell.h
+@@ -1,6 +1,7 @@
+ #ifndef SHELL_H
+ #define SHELL_H
+ 
++#include <QHash>
+ #include <QObject>
+ 
+ class QQmlEngine;
+@@ -20,6 +21,8 @@ class NotificationManager;
+  * no longer pay for is four QML engines, four copies of every QML type and four
+  * icon caches.
+  */
++class QScreen;
++
+ class Shell : public QObject
+ {
+     Q_OBJECT
+@@ -37,10 +40,13 @@ public:
+ private:
+     void registerQmlTypes();
+     void loadTranslations();
++    //! One extra status bar per non-primary screen, like macOS menu bars.
++    void syncSecondaryStatusBars();
+ 
+     QQmlEngine *m_engine;
+ 
+     StatusBar *m_statusBar;
++    QHash<QScreen *, StatusBar *> m_secondaryStatusBars;
+     DockWindow *m_dock;
+     Launcher *m_launcher;
+     DesktopManager *m_desktops;
+diff --git a/src/statusbar/appmenu/appmenumodel.cpp b/src/statusbar/appmenu/appmenumodel.cpp
+index 704ac81..274d04f 100644
+--- a/src/statusbar/appmenu/appmenumodel.cpp
++++ b/src/statusbar/appmenu/appmenumodel.cpp
+@@ -139,6 +139,11 @@ void AppMenuModel::onActiveWindowChanged()
+     KWinWaylandInterface *kwin = KWinWaylandInterface::instance();
+     const KWinWaylandClient client = kwin->client(kwin->activeWindow());
+ 
++    if (m_activeWindowGeometry != client.geometry) {
++        m_activeWindowGeometry = client.geometry;
++        emit activeWindowGeometryChanged();
++    }
++
+     QString serviceName = client.appMenuServiceName;
+     QString objectPath = client.appMenuObjectPath;
+ 
+diff --git a/src/statusbar/appmenu/appmenumodel.h b/src/statusbar/appmenu/appmenumodel.h
+index c8a5567..198e762 100644
+--- a/src/statusbar/appmenu/appmenumodel.h
++++ b/src/statusbar/appmenu/appmenumodel.h
+@@ -19,6 +19,9 @@ class AppMenuModel : public QAbstractListModel
+ 
+     Q_PROPERTY(bool menuAvailable READ menuAvailable WRITE setMenuAvailable NOTIFY menuAvailableChanged)
+     Q_PROPERTY(bool visible READ visible NOTIFY visibleChanged)
++    //! Where the active window is, so each display's bar can show the menu
++    //! only when the focused window is on that display (like macOS).
++    Q_PROPERTY(QRect activeWindowGeometry READ activeWindowGeometry NOTIFY activeWindowGeometryChanged)
+ 
+ public:
+     explicit AppMenuModel(QObject *parent = nullptr);
+@@ -39,6 +42,7 @@ public:
+     void setMenuAvailable(bool set);
+ 
+     bool visible() const;
++    QRect activeWindowGeometry() const { return m_activeWindowGeometry; }
+ 
+     // The submenu of the menu bar entry at @p row, for QMenuModel to show,
+     // or nullptr when the entry is a plain action.
+@@ -57,6 +61,7 @@ Q_SIGNALS:
+     void menuAvailableChanged();
+     void modelNeedsUpdate();
+     void visibleChanged();
++    void activeWindowGeometryChanged();
+ 
+ private:
+     // Activity occupies row zero; exported application actions follow it.
+@@ -67,6 +72,7 @@ private:
+     bool m_menuAvailable;
+     bool m_updatePending = false;
+     bool m_visible = true;
++    QRect m_activeWindowGeometry;
+ 
+     QPointer<QMenu> m_menu;
+     QPointer<QMenu> m_activityMenu;
+diff --git a/src/statusbar/qml/main.qml b/src/statusbar/qml/main.qml
+index e5eabee..663ffc2 100644
+--- a/src/statusbar/qml/main.qml
++++ b/src/statusbar/qml/main.qml
+@@ -79,6 +79,7 @@ Item {
+ 
+     StatusBarForegroundHelper {
+         id: bgHelper
++        targetScreen: barScreen
+     }
+ 
+     FishUI.PopupTips {
+@@ -89,6 +90,20 @@ Item {
+     // the work area the shell itself reserves.
+     ScreenHelper {
+         id: screenHelper
++        targetScreen: barScreen
++    }
++
++    // Every display has a bar; the application menu shows on the one holding
++    // the active window, the way macOS does it. A window whose geometry is not
++    // known yet counts as being on the primary display.
++    readonly property bool activeWindowOnThisScreen: {
++        var g = appMenuModel.activeWindowGeometry
++        if (g.width <= 0 || g.height <= 0)
++            return isPrimaryBar
++        var s = screenHelper.screenGeometry
++        var cx = g.x + g.width / 2
++        var cy = g.y + g.height / 2
++        return cx >= s.x && cx < s.x + s.width && cy >= s.y && cy < s.y + s.height
+     }
+ 
+     // Application menu
+@@ -248,7 +263,7 @@ Item {
+                 anchors.fill: parent
+                 orientation: Qt.Horizontal
+                 spacing: FishUI.Units.smallSpacing
+-                visible: appMenuModel.visible
++                visible: appMenuModel.visible && rootItem.activeWindowOnThisScreen
+                 interactive: false
+                 clip: true
+ 
+@@ -304,14 +319,22 @@ Item {
+                     // An application can ask for one of its menus to be
+                     // opened, which is how a menu shortcut arrives here.
+                     onRequestActivateIndex: function (index) {
+-                        rootItem.openAppMenu(index, true)
++                        if (rootItem.activeWindowOnThisScreen)
++                            rootItem.openAppMenu(index, true)
+                     }
+                 }
+             }
+         }
+ 
+-        // System tray(Right)
+-        SystemTray {}
++        // System tray(Right). Tray items register with one watcher only, so
++        // the tray lives on the primary display's bar.
++        Loader {
++            active: isPrimaryBar
++            visible: active
++            Layout.fillHeight: true
++            Layout.preferredWidth: item ? item.Layout.preferredWidth : 0
++            sourceComponent: SystemTray {}
++        }
+ 
+         StandardItem {
+             id: controler
+@@ -535,6 +558,7 @@ Item {
+     // process; now com.cutefish.Notification.showWindow() lands here.
+     Connections {
+         target: notificationManager
++        enabled: isPrimaryBar
+ 
+         function onWindowRequested() {
+             datetimeItem.toggleDialog()
+diff --git a/src/statusbar/statusbar.cpp b/src/statusbar/statusbar.cpp
+index 35a1029..93d1409 100644
+--- a/src/statusbar/statusbar.cpp
++++ b/src/statusbar/statusbar.cpp
+@@ -10,7 +10,7 @@
+ #include <QSettings>
+ #include <QScreen>
+ 
+-StatusBar::StatusBar(QQmlEngine *engine)
++StatusBar::StatusBar(QQmlEngine *engine, QScreen *screen)
+     : ShellSurface(engine)
+     , m_acticity(Activity::self())
+ {
+@@ -23,8 +23,13 @@ StatusBar::StatusBar(QQmlEngine *engine)
+     setTitle(QStringLiteral("Status Bar"));
+     setColor(Qt::transparent);
+ 
+-    new StatusbarAdaptor(this);
+-    new AppMenu(this);
++    const bool primary = !screen;
++    if (primary) {
++        new StatusbarAdaptor(this);
++        new AppMenu(this);
++    }
++    setContextProperty("isPrimaryBar", primary);
++    setContextProperty("barScreen", QVariant::fromValue(screen));
+     setContextProperty("StatusBar", this);
+     setContextProperty("acticity", m_acticity);
+     setContextProperty("battery", Battery::self());
+@@ -32,8 +37,13 @@ StatusBar::StatusBar(QQmlEngine *engine)
+     setSource(QUrl(QStringLiteral("qrc:/statusbar/qml/main.qml")));
+     configureSurfaceRole(SurfaceRole::Panel);
+ 
+-    // The status bar always lives on the primary screen.
+-    followPrimaryScreen([this] { updateGeometry(); });
++    if (primary) {
++        followPrimaryScreen([this] { updateGeometry(); });
++    } else {
++        setScreen(screen);
++        watchScreen(screen, [this] { updateGeometry(); });
++        updateGeometry();
++    }
+ 
+     setVisible(true);
+     initState();
+diff --git a/src/statusbar/statusbar.h b/src/statusbar/statusbar.h
+index d125582..78d64f7 100644
+--- a/src/statusbar/statusbar.h
++++ b/src/statusbar/statusbar.h
+@@ -16,7 +16,11 @@ public:
+     //! the same value to average the strip of wallpaper the bar covers.
+     static constexpr int Height = 32;
+ 
+-    explicit StatusBar(QQmlEngine *engine);
++    //! A null @p screen makes the primary bar: it follows the primary screen
++    //! and owns the bar's D-Bus services (application menu registrar, tray,
++    //! com.cutefish.Statusbar). A bar for any other screen only shows the
++    //! application menu, clock and control centre for that screen.
++    explicit StatusBar(QQmlEngine *engine, QScreen *screen = nullptr);
+ 
+     QRect screenRect();
+     bool twentyFourTime();
+diff --git a/src/statusbar/statusbarforegroundhelper.cpp b/src/statusbar/statusbarforegroundhelper.cpp
+index cc4581c..97440f1 100644
+--- a/src/statusbar/statusbarforegroundhelper.cpp
++++ b/src/statusbar/statusbarforegroundhelper.cpp
+@@ -238,7 +238,7 @@ void StatusBarForegroundHelper::onPrimaryScreenChanged()
+     if (m_screen)
+         m_screen->disconnect(this);
+ 
+-    m_screen = qApp->primaryScreen();
++    m_screen = m_targetScreen ? m_targetScreen.data() : qApp->primaryScreen();
+ 
+     if (!m_screen) {
+         ++m_requestSerial;
+@@ -255,6 +255,15 @@ void StatusBarForegroundHelper::onPrimaryScreenChanged()
+     onScreenChanged();
+ }
+ 
++void StatusBarForegroundHelper::setTargetScreen(QScreen *screen)
++{
++    if (m_targetScreen == screen)
++        return;
++
++    m_targetScreen = screen;
++    onPrimaryScreenChanged();
++}
++
+ void StatusBarForegroundHelper::onScreenChanged()
+ {
+     // Only the wallpaper crop depends on the screen; a plain colour does not.
+diff --git a/src/statusbar/statusbarforegroundhelper.h b/src/statusbar/statusbarforegroundhelper.h
+index c641008..0ced349 100644
+--- a/src/statusbar/statusbarforegroundhelper.h
++++ b/src/statusbar/statusbarforegroundhelper.h
+@@ -19,6 +19,8 @@ class StatusBarForegroundHelper : public QObject
+     // sampling fails; the bar falls back to the system dark mode then.
+     Q_PROPERTY(bool valid READ isValid NOTIFY foregroundChanged)
+     Q_PROPERTY(bool useLightForeground READ useLightForeground NOTIFY foregroundChanged)
++    //! The screen whose wallpaper strip is sampled. Unset (null) follows the primary screen.
++    Q_PROPERTY(QScreen *targetScreen READ targetScreen WRITE setTargetScreen)
+ 
+ public:
+     explicit StatusBarForegroundHelper(QObject *parent = nullptr);
+@@ -30,6 +32,9 @@ public:
+     Q_INVOKABLE void setBackground(const QString &fileName, bool dimmed);
+     Q_INVOKABLE void setUnavailable();
+ 
++    QScreen *targetScreen() const { return m_targetScreen; }
++    void setTargetScreen(QScreen *screen);
++
+ signals:
+     void foregroundChanged();
+ 
+@@ -48,6 +53,7 @@ private:
+     void setForeground(bool valid, bool useLight);
+ 
+     QPointer<QScreen> m_screen;
++    QPointer<QScreen> m_targetScreen;
+     QTimer *m_sampleTimer;
+     int m_statusBarHeight;
+     Type m_type;
+-- 
+2.43.0
+

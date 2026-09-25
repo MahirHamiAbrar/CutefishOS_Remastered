@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    # MOTD news fetches from motd.ubuntu.com; apt news from the Pro client.
+    systemctl mask motd-news.timer >/dev/null 2>&1 || true
+    if command -v pro >/dev/null 2>&1; then
+        pro config set apt_news=false >/dev/null 2>&1 || true
+    fi
+fi
+#DEBHELPER#

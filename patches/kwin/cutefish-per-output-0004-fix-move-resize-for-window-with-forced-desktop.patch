@@ -1,0 +1,166 @@
+From f883df4486e5d0f46ffb6804c0ad5d7d99bb9515 Mon Sep 17 00:00:00 2001
+From: Hynek Schlindenbuch <schlindenbuch.h@seznam.cz>
+Date: Sat, 3 Jan 2026 11:06:07 +0100
+Subject: [PATCH] fix move/resize for window with forced desktop
+
+This isn't a problem when all outputs have the same desktop. But with
+per-output desktops, it could happen that the desktop on the other
+screen is different. So when the window's output changed, it stayed
+visible, but it wasn't really there. Now it disappears when it's dropped
+on the other output with different desktop.
+---
+ .../integration/xdgshellwindow_rules_test.cpp | 84 +++++++++++++++++++
+ src/scene/windowitem.cpp                      |  1 +
+ src/workspace.cpp                             |  8 ++
+ 3 files changed, 93 insertions(+)
+
+diff --git a/autotests/integration/xdgshellwindow_rules_test.cpp b/autotests/integration/xdgshellwindow_rules_test.cpp
+index 28f827e119..00d6b528f8 100644
+--- a/autotests/integration/xdgshellwindow_rules_test.cpp
++++ b/autotests/integration/xdgshellwindow_rules_test.cpp
+@@ -16,6 +16,7 @@
+ #include "core/outputconfiguration.h"
+ #include "cursor.h"
+ #include "rules.h"
++#include "scene/windowitem.h"
+ #include "virtualdesktops.h"
+ #include "wayland_server.h"
+ #include "window.h"
+@@ -71,6 +72,7 @@ private Q_SLOTS:
+     void testDesktopsApply();
+     void testDesktopsRemember();
+     void testDesktopsForce();
++    void testDesktopsForceWithPerOutputDesktopsAndInteractiveMove();
+     void testDesktopsApplyNow();
+     void testDesktopsForceTemporarily();
+ 
+@@ -228,6 +230,8 @@ void TestXdgShellWindowRules::cleanup()
+     // Restore virtual desktops to the initial state.
+     VirtualDesktopManager::self()->setCount(1);
+     QCOMPARE(VirtualDesktopManager::self()->count(), 1u);
++    VirtualDesktopManager::self()->setPerOutputVirtualDesktops(false);
++    QCOMPARE(VirtualDesktopManager::self()->isPerOutputVirtualDesktops(), false);
+ }
+ 
+ void TestXdgShellWindowRules::createTestWindow(ClientFlags flags)
+@@ -1436,6 +1440,86 @@ void TestXdgShellWindowRules::testDesktopsForce()
+     destroyTestWindow();
+ }
+ 
++void TestXdgShellWindowRules::testDesktopsForceWithPerOutputDesktopsAndInteractiveMove()
++{
++    // We need at least two virtual desktop for this test.
++    VirtualDesktopManager::self()->setCount(2);
++    QCOMPARE(VirtualDesktopManager::self()->count(), 2u);
++    VirtualDesktopManager::self()->setPerOutputVirtualDesktops(true);
++    QVERIFY(VirtualDesktopManager::self()->isPerOutputVirtualDesktops());
++    VirtualDesktop *vd1 = VirtualDesktopManager::self()->desktops().at(0);
++    VirtualDesktop *vd2 = VirtualDesktopManager::self()->desktops().at(1);
++
++    setWindowRule("desktops", QStringList{vd2->id()}, int(Rules::Force));
++
++    const auto outputs = workspace()->outputs();
++    QCOMPARE_GE(outputs.size(), 2);
++    LogicalOutput *startOutput = outputs[0];
++    LogicalOutput *endOutput = outputs[1];
++    VirtualDesktopManager::self()->setCurrent(vd2, startOutput);
++    VirtualDesktopManager::self()->setCurrent(vd1, endOutput);
++    workspace()->setActiveOutput(startOutput);
++
++    createTestWindow();
++
++    QVERIFY(m_window);
++    QCOMPARE(workspace()->activeWindow(), m_window);
++    QCOMPARE(m_window->frameGeometry(), RectF(0, 0, 100, 50));
++    m_window->sendToOutput(startOutput);
++    QCOMPARE(m_window->output(), startOutput);
++    workspace()->setActiveWindow(m_window);
++
++    QSignalSpy interactiveMoveResizeStartedSpy(m_window, &Window::interactiveMoveResizeStarted);
++    QSignalSpy moveResizedChangedSpy(m_window, &Window::moveResizedChanged);
++    QSignalSpy interactiveMoveResizeSteppedSpy(m_window, &Window::interactiveMoveResizeStepped);
++    QSignalSpy interactiveMoveResizeFinishedSpy(m_window, &Window::interactiveMoveResizeFinished);
++
++    // begin move
++    QVERIFY(workspace()->moveResizeWindow() == nullptr);
++    QVERIFY(m_window->isActive());
++    QVERIFY(m_window->windowItem()->isVisible());
++    QCOMPARE(m_window->isInteractiveMove(), false);
++    workspace()->slotWindowMove();
++    QCOMPARE(workspace()->moveResizeWindow(), m_window);
++    QCOMPARE(interactiveMoveResizeStartedSpy.count(), 1);
++    QCOMPARE(moveResizedChangedSpy.count(), 1);
++    QCOMPARE(m_window->isInteractiveMove(), true);
++    QCOMPARE(m_window->geometryRestore(), RectF());
++
++    // move the window to endOutput
++    const QPointF cursorPos = Cursors::self()->mouse()->pos();
++
++    for (int i = 0; i < 40; i++) {
++        m_window->keyPressEvent(Qt::Key_Right | Qt::ALT);
++        m_window->updateInteractiveMoveResize(Cursors::self()->mouse()->pos(), Qt::KeyboardModifiers());
++    }
++
++    QCOMPARE(Cursors::self()->mouse()->pos(), cursorPos + QPoint(40 * 32, 0));
++    QCOMPARE(interactiveMoveResizeSteppedSpy.count(), 40);
++    QVERIFY(m_window->isActive());
++    QVERIFY(m_window->windowItem()->isVisible());
++    interactiveMoveResizeSteppedSpy.clear();
++
++    // end move
++    QCOMPARE(interactiveMoveResizeFinishedSpy.count(), 0);
++    m_window->keyPressEvent(Qt::Key_Enter);
++    QCOMPARE(interactiveMoveResizeFinishedSpy.count(), 1);
++    QCOMPARE(moveResizedChangedSpy.count(), 2);
++    QCOMPARE(m_window->isInteractiveMove(), false);
++    QVERIFY(workspace()->moveResizeWindow() == nullptr);
++
++    // The window should appear on the second screen. It should keep its desktop, so it should disappear.
++    QCOMPARE(m_window->desktops(), {vd2});
++    QCOMPARE(m_window->output(), endOutput);
++    QCOMPARE(VirtualDesktopManager::self()->currentDesktop(endOutput), vd1);
++    QCOMPARE(m_window->isOnCurrentDesktop(), false);
++    // It's not immediate due to scale effect.
++    QTRY_COMPARE_WITH_TIMEOUT(m_window->windowItem()->isVisible(), false, 1000);
++    QCOMPARE(m_window->isActive(), false);
++
++    destroyTestWindow();
++}
++
+ void TestXdgShellWindowRules::testDesktopsApplyNow()
+ {
+     // We need at least two virtual desktop for this test.
+diff --git a/src/scene/windowitem.cpp b/src/scene/windowitem.cpp
+index e74e4a4824..e20c71cc6f 100644
+--- a/src/scene/windowitem.cpp
++++ b/src/scene/windowitem.cpp
+@@ -48,6 +48,7 @@ WindowItem::WindowItem(Window *window, Item *parent)
+     connect(window, &Window::activitiesChanged, this, &WindowItem::updateVisibility);
+     connect(window, &Window::desktopsChanged, this, &WindowItem::updateVisibility);
+     connect(window, &Window::offscreenRenderingChanged, this, &WindowItem::updateVisibility);
++    connect(window, &Window::interactiveMoveResizeFinished, this, &WindowItem::updateVisibility);
+     connect(window, &Window::outputChanged, this, &WindowItem::updateVisibility);
+     connect(waylandServer(), &WaylandServer::lockStateChanged, this, &WindowItem::updateVisibility);
+     connect(workspace(), &Workspace::currentActivityChanged, this, &WindowItem::updateVisibility);
+diff --git a/src/workspace.cpp b/src/workspace.cpp
+index 71e80b6966..1c28706db3 100644
+--- a/src/workspace.cpp
++++ b/src/workspace.cpp
+@@ -698,6 +698,14 @@ void Workspace::setupWindowConnections(Window *window)
+ {
+     connect(window, &Window::minimizedChanged, this, std::bind(&Workspace::windowMinimizedChanged, this, window));
+     connect(window, &Window::fullScreenChanged, m_screenEdges.get(), &ScreenEdges::checkBlocking);
++    connect(window, &Window::interactiveMoveResizeFinished, this, [this, window]() {
++        // Activate another window if the resized/moved window "disappeared" (e.g. due to force desktop window rule).
++        if (!window->isActive() || window->isOnCurrentDesktop()) {
++            return;
++        }
++
++        activateWindowOnDesktop(VirtualDesktopManager::self()->currentDesktop());
++    });
+ }
+ 
+ void Workspace::constrain(Window *below, Window *above)
+-- 
+2.43.0
+

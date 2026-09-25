@@ -1,0 +1,86 @@
+Source: cutefish-meta
+Section: metapackages
+Priority: optional
+Maintainer: Cutefish Remastered <remastered@localhost>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+
+Package: cutefish-desktop
+Architecture: all
+Depends: ${misc:Depends},
+# Cutefish itself
+         cutefish-core, cutefish-shell, cutefish-filemanager, cutefish-settings,
+         cutefish-kwin-plugins, cutefish-qt-plugins, cutefish-terminal,
+         cutefish-screenshot, cutefish-calculator, cutefish-texteditor,
+         cutefish-icon-theme, cutefish-wallpapers, cutefish-gtk-themes,
+         cutefish-cursor-themes, cutefish-sddm-theme, cutefish-plymouth-theme,
+         fishui, libcutefish,
+# Compositor: our KWin build (per-display Spaces, per-app blur)
+         kwin-wayland (>= 4:6.6.6-0ubuntu0.1+cutefish1), libkscreenlocker6, xwayland,
+         sddm, qt6-wayland, layer-shell-qt, xdg-desktop-portal-kde, xdg-desktop-portal-gtk, polkit-kde-agent-1,
+# Sound, fonts, global menu for GTK apps
+         pipewire-pulse, wireplumber, pipewire-alsa,
+         fonts-noto-core, fonts-noto-color-emoji, fonts-noto-cjk,
+         appmenu-gtk3-module, qt6-svg-plugins, breeze-icon-theme, milou,
+# Everyday apps (Firefox from Mozilla's APT repository, no snap)
+         firefox, mpv, ark, curl
+Recommends: cutefish-hardware, cutefish-privacy
+Description: Cutefish desktop environment (Remastered)
+ Installs the complete Cutefish desktop on Ubuntu 26.04: shell, file
+ manager, settings, apps, themes and the KWin Wayland compositor build with
+ per-display Spaces and per-app blur. Also sets up Mozilla's APT repository
+ for Firefox.
+
+Package: cutefish-hardware
+Architecture: all
+Depends: ${misc:Depends},
+# Kernel and firmware (stock, signed Ubuntu kernel)
+         linux-generic, linux-firmware, intel-microcode, amd64-microcode,
+         ubuntu-drivers-common, dkms, fwupd,
+# Graphics and video decoding
+         libgl1-mesa-dri, mesa-vulkan-drivers, mesa-va-drivers,
+         intel-media-va-driver, va-driver-all,
+# Wi-Fi, hotspot, mobile broadband
+         network-manager, wpasupplicant, wireless-regdb, iw, rfkill, dnsmasq-base,
+         modemmanager,
+# Bluetooth (incl. audio and file transfer)
+         bluez, bluez-obexd, libspa-0.2-bluetooth,
+# Laptop power, charging, sensors
+         upower, power-profiles-daemon, thermald, iio-sensor-proxy, acpid,
+# Audio firmware for modern laptops
+         firmware-sof-signed, alsa-ucm-conf, alsa-utils,
+# Storage: NTFS (in-kernel ntfs3 + ntfs-3g tools), exFAT, FAT, USB, phones
+         ntfs-3g, exfatprogs, dosfstools, udisks2, kio-extras, gvfs-backends,
+         usbutils, pciutils,
+# Printing and scanning basics
+         cups, printer-driver-all, system-config-printer-common,
+# VirtualBox/QEMU guests (harmless on real hardware)
+         virtualbox-guest-utils, spice-vdagent, qemu-guest-agent
+Description: Drivers and hardware support for Cutefish
+ Stock Ubuntu kernel and firmware, Mesa graphics and video acceleration,
+ NetworkManager (Wi-Fi, hotspot, mobile broadband), BlueZ, laptop power
+ management, sound firmware, and NTFS/exFAT/FAT/MTP storage support.
+ Proprietary GPU and Wi-Fi drivers are installed by ubuntu-drivers.
+
+Package: cutefish-privacy
+Architecture: all
+Depends: ${misc:Depends}, cutefish-netmonitor, opensnitch, opensnitch-ebpf-modules, nftables
+Conflicts: apport, whoopsie, ubuntu-report, popularity-contest, snapd
+Description: Privacy defaults for Cutefish
+ Every outgoing connection is checked by OpenSnitch through the Cutefish
+ network monitor and incoming connections are refused and logged.
+ Removes Ubuntu's crash and usage reporting and snapd, turns off
+ NetworkManager's connectivity check and MOTD news, randomises Wi-Fi MAC
+ addresses and disables Firefox telemetry.
+
+Package: calamares-settings-cutefish
+Architecture: all
+Depends: ${misc:Depends}, calamares, calamares-settings-ubuntu-common
+Description: Cutefish branding and settings for the Calamares installer
+
+Package: cutefish-live
+Architecture: all
+Depends: ${misc:Depends}, casper, calamares-settings-cutefish
+Description: Cutefish live session
+ Logs the live user into the Cutefish session and opens the installer.
+ Removed from the installed system by the installer.

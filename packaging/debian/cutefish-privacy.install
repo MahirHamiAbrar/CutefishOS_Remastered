@@ -1,0 +1,2 @@
+files/nm/90-cutefish-privacy.conf etc/NetworkManager/conf.d
+files/firefox/policies.json etc/firefox/policies

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Network Monitor
+Comment=Asks before apps connect to the network and records every connection
+Exec=cutefish-netmonitor
+Icon=network-wired
+OnlyShowIn=Cutefish;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

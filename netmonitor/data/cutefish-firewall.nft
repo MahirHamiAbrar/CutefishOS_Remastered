@@ -1,0 +1,31 @@
+#!/usr/sbin/nft -f
+# Cutefish inbound firewall: nothing may connect in unless it answers a
+# connection this machine made. Dropped packets are logged with the
+# "cutefish-in: " prefix; Settings > Network Monitor shows them.
+# Outgoing traffic is watched per application by OpenSnitch instead.
+
+table inet cutefish_firewall
+delete table inet cutefish_firewall
+
+table inet cutefish_firewall {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        ct state established,related accept
+        ct state invalid drop
+        iif lo accept
+
+        # ICMP/ICMPv6 (IPv6 does not work without neighbour discovery).
+        meta l4proto { icmp, ipv6-icmp } accept
+
+        # DHCP/DHCPv6 client replies are broadcasts, not tracked replies.
+        udp dport { 68, 546 } accept
+        # mDNS: printers and other local devices.
+        udp dport 5353 accept
+        # Wi-Fi hotspot: NetworkManager's dnsmasq serves DHCP and DNS to clients.
+        udp dport { 53, 67 } accept
+        tcp dport 53 accept
+
+        limit rate 10/second burst 20 packets log prefix "cutefish-in: " level info
+    }
+}

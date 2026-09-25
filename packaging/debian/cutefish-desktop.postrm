@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+if [ "$1" = purge ]; then
+    rm -f /etc/apt/sources.list.d/mozilla.sources /etc/apt/preferences.d/mozilla
+fi
+#DEBHELPER#
