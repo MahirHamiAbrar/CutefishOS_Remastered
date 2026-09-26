@@ -27,12 +27,16 @@ index
 echo "deb [trusted=yes] copy:$OUT/repo ./" > /etc/apt/sources.list.d/local.list
 apt-get update -qq 2>/dev/null
 
-# Every file in our debs used to come out dated 2022-01-01 (the builder's
-# clock). Qt keeps using its QML disk cache for QML compiled into a binary as
-# long as the binary's mtime is unchanged, so an upgraded app went on running
-# its old QML (setback 31). Stamp each package's files with its changelog date
-# (dpkg-buildpackage exports it as SOURCE_DATE_EPOCH) right before dpkg-deb
-# packs them, so every new version has new mtimes.
+# Every file in our debs used to come out dated 2022-01-01: Modal's image
+# sets SOURCE_DATE_EPOCH to that, dpkg-buildpackage keeps a preset value, and
+# dpkg-deb clamps every mtime to it. Qt keeps using its QML disk cache for QML
+# compiled into a binary as long as the binary's mtime is unchanged, so an
+# upgraded app went on running its old QML (setback 32). Unset it, so that
+# dpkg-buildpackage takes each package's changelog date, and stamp the files
+# with that date right before dpkg-deb packs them: every new version gets new
+# mtimes.
+echo "builder SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-unset} (unset for the build)"
+unset SOURCE_DATE_EPOCH
 cat > /usr/local/bin/dpkg-deb <<'EOF'
 #!/bin/sh
 if [ -n "$SOURCE_DATE_EPOCH" ]; then

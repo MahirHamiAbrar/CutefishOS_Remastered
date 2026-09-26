@@ -1,0 +1,49 @@
+From c59ddf3a786bfc88c8076774f568e265580d5bb9 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:35:10 +0600
+Subject: [PATCH 4/4] Window: unversioned imports, so Qt 6 Window properties
+ (transientParent) are visible
+
+---
+ debian/changelog        |  6 ++++++
+ src/controls/Window.qml | 10 +++++-----
+ 2 files changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index d77fd2e..3276a25 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++fishui (0.8+remastered4) resolute; urgency=medium
++
++  * Window: unversioned imports, so Qt 6 Window properties (transientParent) are visible
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:35:10 +0600
++
+ fishui (0.8+remastered3) resolute; urgency=medium
+ 
+   * Theme.windowOpacity/windowRadius follow the Appearance service; ConfirmDialog.parentWindow and Window.blurEnabled as plain properties
+diff --git a/src/controls/Window.qml b/src/controls/Window.qml
+index 1fe39a8..1f3bd82 100644
+--- a/src/controls/Window.qml
++++ b/src/controls/Window.qml
+@@ -17,11 +17,11 @@
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
+-import QtQuick 2.12
+-import QtQuick.Window 2.3
+-import QtQuick.Controls 2.4
+-import QtQuick.Layouts 1.3
+-import QtQuick.Shapes 1.12
++import QtQuick
++import QtQuick.Window
++import QtQuick.Controls
++import QtQuick.Layouts
++import QtQuick.Shapes
+ import Qt5Compat.GraphicalEffects
+ import FishUI 1.0 as FishUI
+ 
+-- 
+2.43.0
+

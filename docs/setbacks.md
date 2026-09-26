@@ -200,7 +200,7 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 ## 32. An upgraded app kept running its old QML
 - **Symptom:** After installing the fixed Terminal, Calculator and FishUI debs in the VM, the apps printed exactly the same QML errors as before. With `QML_DISABLE_DISK_CACHE=1` they got past them.
 - **Cause:** Every file in every deb we built was dated 2022-01-01, whichever version it was. Qt reuses its QML disk cache (`~/.cache/<app>/qmlcache`) for QML compiled into a binary as long as the binary's mtime hasn't changed, so the new binaries looked identical to the cached ones.
-- **Fix:** `scripts/build-in-container.sh` puts a small `dpkg-deb` wrapper first in `PATH`, which stamps each package's files with its changelog date (`SOURCE_DATE_EPOCH`, set by `dpkg-buildpackage`) before packing. Each new version therefore has new mtimes, and Qt recompiles.
+- **Fix:** Modal's image presets `SOURCE_DATE_EPOCH` to 2022-01-01, `dpkg-buildpackage` keeps a preset value, and `dpkg-deb` clamps every mtime to it. `scripts/build-in-container.sh` now unsets it, so each package gets its changelog date, and a small `dpkg-deb` wrapper first in `PATH` stamps the package's files with that date before packing. Each new version therefore has new mtimes, and Qt recompiles.
 - **Also:** A QML `property alias x: root.inheritedProperty` on the root object of a FishUI component didn't resolve ("non-existent property") when used from Terminal. Plain properties with a binding work.
 
 ## 33. The rounded-corners effect was never built
