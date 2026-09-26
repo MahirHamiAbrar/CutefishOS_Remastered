@@ -144,3 +144,14 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** Every launch of Settings logged `qrc:/qml/main.qml:73: TypeError: Cannot read property 'page' of undefined`, on machines without Wi-Fi (the VirtualBox VM, a container, most desktops). Row 2 of the test plan counts this as a failure.
 - **Cause:** The sidebar removes entries for missing hardware once it's built (`SideBar.qml`, `removeItem`). "Wi-Fi" is the first entry and is selected by default. Removing it set the list's `currentIndex` to -1, so `switchPageFromIndex(-1)` read `model.get(-1)`. Settings stayed on the removed Wi-Fi page, with no entry selected.
 - **Fix:** `removeItem` selects the new first entry when the selected one goes away, and `switchPageFromIndex` ignores indexes outside the model (`patches/settings/0002`, settings 0.8+remastered4). It was found by running Settings headless in the Ubuntu 26.04 build container (Xvfb, no Wi-Fi). After the fix the error is gone, and `cutefish-settings -m bluetooth` opens the Bluetooth page.
+
+## 23. Per-app blur: Firefox turned translucent but not blurred
+- **Symptom:** With Firefox in the blur list, Firefox became 90 % opaque, but what showed through it (Settings, the Network Monitor prompt) was sharp. A plain GTK test window at 60 % opacity looked the same, so it wasn't Firefox-specific.
+- **Cause:** Temporary logging in the blur effect showed everything upstream of drawing worked: the class matched (`firefox-bin firefox`), the window got a whole-window blur region, and `blur()` drew it every frame. But KWin fades the blurred background by the window's opacity squared (`modulation = opacity * opacity`), so that blur follows fade-in and fade-out animations. At the rule's 0.9 opacity, only 81 % of the blur was drawn over the sharp background, and the window then let 10 % of that through. The sharp part dominated. Cutefish's own apps are fully opaque windows with translucent pixels, so they always got the full blur.
+- **Fix:** A force-blurred window ignores its own (rule) opacity for the blur, and only animations still fade it (`patches/kwin/cutefish-blur-0002`, kwin `4:6.6.6-0ubuntu0.1+cutefish2`; meta 26.04.4 requires it).
+- **Note:** Restarting the session in the live VM: `loginctl terminate-user` hung the guest (frozen display, guest control gone, only a reset helped). `sudo systemctl restart sddm` logs the live user back in cleanly.
+
+## 24. Bluetooth switch "on" with no adapter
+- **Symptom:** In the VM (no Bluetooth controller), Settings → Bluetooth showed the switch turned on, with nothing below it.
+- **Cause:** The switch only reflects the rfkill block state (`Manager.bluetoothBlocked`), which is "not blocked" when there's no adapter.
+- **Fix:** Without an adapter the page shows "No adapter found" in place of the switch (`patches/settings/0003`, settings 0.8+remastered5). The switch's binding is left alone, so hiding it never writes an rfkill block.

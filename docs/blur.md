@@ -22,7 +22,7 @@ Apps that never ask for blur (Firefox, LibreOffice, GTK apps…) can't be blurre
 ForceBlurClasses=firefox,org.kde.kate
 ```
 
-A window whose resource name or class matches (case-insensitive) is blurred behind as a whole (`patches/kwin/cutefish-blur-0001-force-blur-classes.patch`).
+A window whose resource name or class matches (case-insensitive) is blurred behind as a whole (`patches/kwin/cutefish-blur-0001-force-blur-classes.patch`). Its blur is drawn at full strength whatever the window's opacity; only open/close animations fade it (`cutefish-blur-0002`, see setbacks §23).
 
 Blur behind an opaque window is invisible, so Settings also writes a normal KWin window rule for each chosen app: `~/.config/kwinrulesrc`, rule id `cutefish-blur-<class>`, opacity 90 % active and 85 % inactive. Your own window rules are left alone. After every change Settings calls `org.kde.KWin.reconfigure` and `reconfigureEffect("blur")`, so nothing needs a restart.
 

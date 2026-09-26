@@ -15,7 +15,7 @@ scripts/fetch.sh            # clone/checkout the pinned commits in repos.lock an
 scripts/fetch.sh --update   # move to the latest upstream commits instead (re-pins repos.lock)
 ```
 
-`fetch.sh` also downloads Ubuntu's `kwin` 4:6.6.6-0ubuntu0.1 source into `src/kwin-ubuntu`, applies `patches/kwin/*.patch`, registers them in `debian/patches/series` and bumps the version to `+cutefish1`.
+`fetch.sh` also downloads Ubuntu's `kwin` 4:6.6.6-0ubuntu0.1 source into `src/kwin-ubuntu`, applies `patches/kwin/*.patch`, registers them in `debian/patches/series` and bumps the version to `+cutefish2`.
 
 After `--update`, patches that no longer apply stop `git am`. Fix them in `src/<repo>`, then re-export them (see "Changing a package").
 

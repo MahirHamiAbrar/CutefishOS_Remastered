@@ -24,7 +24,7 @@ Ctrl+←/→ (the macOS shortcut) was not used on purpose: on Linux it jumps by 
 
 Per-output virtual desktops landed in KWin master for Plasma 6.7 ([MR !8602](https://invent.kde.org/plasma/kwin/-/merge_requests/8602), merged 2026-04-13, by Hynek Schlindenbuch). Ubuntu 26.04 and the Kubuntu backports PPA only have 6.6.6.
 
-We cherry-picked the MR's commits onto the `v6.6.6` tag and ship the result as `kwin 4:6.6.6-0ubuntu0.1+cutefish1`. Everything built from the kwin source (`kwin-wayland`, `kwin-common`, `kwin-dev`, …) is replaced consistently, and `cutefish-kwin-plugins` depends on that version.
+We cherry-picked the MR's commits onto the `v6.6.6` tag and ship the result as `kwin 4:6.6.6-0ubuntu0.1+cutefishN` (now `+cutefish2`, which adds the blur fixes). Everything built from the kwin source (`kwin-wayland`, `kwin-common`, `kwin-dev`, …) is replaced consistently, and `cutefish-kwin-plugins` depends on that version.
 
 | Commit (upstream) | Backported | Notes |
 |---|---|---|
