@@ -77,6 +77,7 @@ One process, one bus name (`com.cutefish.Services`), one object per area. Each a
 - each setter clamps its value, writes, `sync()`s and emits a change signal;
 - the first-run fonts are Inter and JetBrains Mono, with Noto Sans CJK for Chinese and Japanese;
 - changes that KDE and KF6 apps should notice are announced with the `org.kde.KGlobalSettings` `notifyChange` signal.
+- GTK apps follow through `~/.config/gtk-3.0/settings.ini`: `gtk-theme-name` (`Cutefish-light` or `Cutefish-dark`), `gtk-application-prefer-dark-theme`, and the cursor theme and size.
 
 Readers of `theme.conf`:
 - over D-Bus: the framework's `Appearance`, then FishUI and the shell;

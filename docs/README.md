@@ -19,6 +19,7 @@ Cutefish OS brought back on **Ubuntu 26.04 LTS** (stock kernel 7.0), with the re
 | [testing.md](testing.md) | VirtualBox harness and test plan |
 | [setbacks.md](setbacks.md) | Every problem we hit, why, and how it was solved |
 | [known-issues.md](known-issues.md) | What still doesn't work, or only partly works |
+| [dev/](dev/README.md) | Developer guides: architecture and API of every repository under `src/` |
 
 ## Features
 
