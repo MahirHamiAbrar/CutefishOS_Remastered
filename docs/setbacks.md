@@ -155,3 +155,8 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** In the VM (no Bluetooth controller), Settings → Bluetooth showed the switch turned on, with nothing below it.
 - **Cause:** The switch only reflects the rfkill block state (`Manager.bluetoothBlocked`), which is "not blocked" when there's no adapter.
 - **Fix:** Without an adapter the page shows "No adapter found" in place of the switch (`patches/settings/0003`, settings 0.8+remastered5). The switch's binding is left alone, so hiding it never writes an rfkill block.
+
+## 25. The installer never opened by itself on the live system
+- **Symptom:** The live session log had `-qw: 1: Syntax error: Unterminated quoted string`, and Calamares didn't open at login (test-plan row 13 says it should).
+- **Cause:** `/etc/xdg/autostart/cutefish-live-installer.desktop` had `Exec=sh -c 'grep -qw boot=casper /proc/cmdline && exec …'`. Desktop entries only quote with double quotes, and Cutefish's session splits `Exec` with `QProcess::splitCommand`, which also only knows double quotes. So it ran `sh -c "'grep"` with `-qw` as `$0`.
+- **Fix:** Double quotes (`packaging/files/live/cutefish-live-installer.desktop`, meta 26.04.5). The same command started from the session opens the installer.
