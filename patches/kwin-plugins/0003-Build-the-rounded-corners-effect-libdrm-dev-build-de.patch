@@ -1,0 +1,61 @@
+From 74375b591e22b9de8932c1a09a0b619cd5341dfe Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:17:59 +0600
+Subject: [PATCH 3/3] Build the rounded-corners effect: libdrm-dev build
+ dependency, KWin dev files required
+
+---
+ debian/changelog       |  6 ++++++
+ debian/control         |  1 +
+ plugins/CMakeLists.txt | 11 ++++-------
+ 3 files changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index bfe07c4..dd84b3b 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-kwin-plugins (0.8+remastered3) resolute; urgency=medium
++
++  * Build the rounded-corners effect: libdrm-dev build dependency, KWin dev files required
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:17:59 +0600
++
+ cutefish-kwin-plugins (0.8+remastered2) resolute; urgency=medium
+ 
+   * Decoration and rounded-window effect follow WindowRadius from theme.conf
+diff --git a/debian/control b/debian/control
+index 6f65e3b..2c99cc7 100644
+--- a/debian/control
++++ b/debian/control
+@@ -10,6 +10,7 @@ Build-Depends: cmake,
+                libkf6config-dev,
+                libkf6coreaddons-dev,
+                libkf6windowsystem-dev,
++               libdrm-dev,
+                libepoxy-dev,
+                libwayland-dev,
+                pkg-config,
+diff --git a/plugins/CMakeLists.txt b/plugins/CMakeLists.txt
+index c5329f9..bd6f3f4 100644
+--- a/plugins/CMakeLists.txt
++++ b/plugins/CMakeLists.txt
+@@ -26,11 +26,8 @@ if(CUTEFISH_BUILD_KWIN6_EFFECT)
+     find_package(KF6WindowSystem QUIET)
+     find_package(Wayland QUIET COMPONENTS Server)
+     find_package(epoxy QUIET)
+-    find_package(KWin QUIET)
+-    if(KWin_FOUND)
+-        add_subdirectory(roundedwindow)
+-        message(STATUS "KWin development files found: building the Cutefish rounded corners effect")
+-    else()
+-        message(WARNING "KWin development files were not found; the rounded corners effect will not be built. Install kwin-dev or disable CUTEFISH_BUILD_KWIN6_EFFECT.")
+-    endif()
++    # REQUIRED: a missing dependency (KWinConfig.cmake also needs Libdrm)
++    # used to skip the effect silently, and no window was ever rounded.
++    find_package(KWin REQUIRED)
++    add_subdirectory(roundedwindow)
+ endif()
+-- 
+2.43.0
+

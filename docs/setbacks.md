@@ -186,3 +186,24 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** Even with the network up and the installer allowed through the firewall (and `curl http://connectivity-check.ubuntu.com` returning 204), the welcome page said "The system is not connected to the Internet", and Calamares logged `hasInternet : false`.
 - **Cause:** Calamares' check (`synchronousPing` in `libcalamares/network/Manager.cpp`, 3.3.14) only counts a reply as success if it has a body (`bytesAvailable()`). Ubuntu's connectivity-check URL answers `204 No Content`.
 - **Fix:** `internetCheckUrl: https://geoip.ubuntu.com/lookup`, which returns a small XML body and which the installer contacts anyway (`packaging/calamares/modules/welcome.conf`, meta 26.04.7). Checked in the live VM: `hasInternet : true`.
+
+## 31. Terminal and Calculator never opened
+- **Symptom:** Found by the user in the VM: clicking Terminal or Calculator did nothing. Launched from a shell, both printed `QQmlApplicationEngine failed to load component` and kept running with no window. Calculator reported `main.qml:43: Cannot assign to non-existent property "geometry"`, Terminal `main.qml:185: FishUI.Label is not a type`.
+- **Cause:** Our tests had only checked that the packages built and installed; neither app had ever been started. The Qt 6 FishUI `WindowBlur` has no `geometry`, and Calculator's own blur block was a Qt 5 leftover (`FishUI.Window` blurs by itself now). Upstream Terminal (Qt 6 port, 2026-09-23) was written against a FishUI that isn't published: it uses `Label`, `ScrollBar`, `Slider`, `Switch` and `RoundedRectangle`, `Window.blurEnabled`/`headerDarkMode`, `RoundImageButton.iconName`/`iconColor`, and `ConfirmDialog.parentWindow`/`showOnCompleted`/`open()`. Its find bar also wants `chevron-up`/`chevron-down` icons, which no installed theme has.
+- **Fix:**
+  - Calculator drops the block (`patches/calculator/0002`).
+  - FishUI gets the missing controls and properties (`patches/fishui/0002`, `0003`).
+  - The icon theme aliases the chevrons to `go-up`/`go-down` (`patches/icons/0002`).
+  - The user chose to extend FishUI rather than rewrite Terminal down to the published API, so when upstream publishes its FishUI our copies can go.
+- **Lesson:** Start every app after a build (`vm.sh srun … 'timeout 8 <app>'`) and read what it prints.
+
+## 32. An upgraded app kept running its old QML
+- **Symptom:** After installing the fixed Terminal, Calculator and FishUI debs in the VM, the apps printed exactly the same QML errors as before. With `QML_DISABLE_DISK_CACHE=1` they got past them.
+- **Cause:** Every file in every deb we built was dated 2022-01-01, whichever version it was. Qt reuses its QML disk cache (`~/.cache/<app>/qmlcache`) for QML compiled into a binary as long as the binary's mtime hasn't changed, so the new binaries looked identical to the cached ones.
+- **Fix:** `scripts/build-in-container.sh` puts a small `dpkg-deb` wrapper first in `PATH`, which stamps each package's files with its changelog date (`SOURCE_DATE_EPOCH`, set by `dpkg-buildpackage`) before packing. Each new version therefore has new mtimes, and Qt recompiles.
+- **Also:** A QML `property alias x: root.inheritedProperty` on the root object of a FishUI component didn't resolve ("non-existent property") when used from Terminal. Plain properties with a binding work.
+
+## 33. The rounded-corners effect was never built
+- **Symptom:** While wiring the new window-corner setting, `loadedEffects` in the VM had no `cutefish_roundedwindow`, although `/etc/xdg/kwinrc` enables it. `cutefish-kwin-plugins` shipped only the decoration.
+- **Cause:** `plugins/CMakeLists.txt` looked KWin up with `find_package(KWin QUIET)` and skipped the effect with a warning when that failed. It always failed: `KWinConfig.cmake` also needs `Libdrm`, and neither `kwin-dev` nor our build dependencies pulled in `libdrm-dev`. So third-party windows (Firefox, GTK apps) were never rounded.
+- **Fix:** `libdrm-dev` is in `Build-Depends`, and KWin is `REQUIRED`, so a missing dependency now fails the build instead of dropping the effect (`patches/kwin-plugins/0003`).
