@@ -64,3 +64,18 @@ To move KWin's active output in the guest without a mouse, run a KWin script wit
 | — | Lock screen: pass | After the fix, `loginctl lock-session` shows the Cutefish lock screen (blurred wallpaper, clock, avatar, password); Enter unlocks the live user. Wrong and right passwords were checked with `kscreenlocker_greet --testing` and a temporary password |
 | 5 | pass | Keyboard shortcuts sent as raw scancodes (`VBoxManage controlvm … keyboardputscancode`, Meta = `e0 5b`/`e0 db`). Meta+Ctrl+← with Virtual-1 active: `Virtual-1=1→0, Virtual-2=1` (unchanged); with Virtual-2 active: `Virtual-2=1→0`, Virtual-1 unchanged. Meta+W opens the overview on both displays, each with its own Desktop strip. `vm.sh displays efi 1` disconnects Virtual-2 and the shell keeps running; `displays efi 2` brings the second status bar back |
 | 12 | capture: pass | After the fix in setbacks §21, `cutefish-screenshot` captures through KWin ScreenShot2 and shows the region-select overlay. Saving needs a mouse drag, which the harness can't send |
+
+### 2026-09-26: checks without the VM (cloud container: Docker, no VirtualBox)
+
+These ran in the Ubuntu 26.04 build container, not in a booted system. The VM rows still need the laptop.
+
+| # | Result | Notes |
+|---|---|---|
+| 11 | page loads (headless) | fishui, libcutefish, qt-plugins and settings built from `patches/`, then `cutefish-settings -m bluetooth` under Xvfb: the Bluetooth page renders with its on/off switch, and there are no QML import errors (`Cutefish.Bluetooth`, `org.kde.bluezqt`). The same with and without `bluetoothd` running (no controller in the container). Still to check in the VM |
+| 2 | fixed (settings) | That run showed `main.qml:73: TypeError` on every Settings launch without Wi-Fi hardware; fixed in settings 0.8+remastered4 (setbacks §22) |
+| 3 | by design | Display 2's volume/Wi-Fi/battery icons are the control-centre button, which every bar has. Only the system tray (`SystemTray`, StatusNotifierItem icons) is limited to the primary bar (`isPrimaryBar`, `src/shell/src/statusbar/qml/main.qml`). Documented in multi-display.md |
+| 4 | code reviewed | Settings writes `ForceBlurClasses=firefox` (Mozilla's `firefox.desktop` → window class `firefox`, Firefox's Wayland app_id) and the `cutefish-blur-firefox` opacity rule (exact match on the resource class). KWin's `reconfigure` reloads the rules and re-evaluates open windows, and `reconfigureEffect("blur")` re-reads the list; the blur patch applies cleanly to KWin 6.6.5's `blur.cpp` and turns a matching window's missing blur region into "whole window". Still to be seen in the VM |
+| 8 | config reviewed | `cutefish-firewall.service` loads `/etc/cutefish-firewall.nft` (netmonitor 0.2 path). Policy `drop`, and a log with prefix `cutefish-in:`, which Settings reads with `journalctl -k --grep=cutefish-in:`. That needs the user to be in `adm`; Calamares' `defaultGroups` and casper both add it. Still to be run in the VM |
+
+**Rebuild before the next ISO:** core 0.8+remastered3, meta 26.04.3, netmonitor 0.2, screenshot 0.8+remastered2, shell 0.8+remastered3 (from the previous session) and settings 0.8+remastered4 (this one).
+

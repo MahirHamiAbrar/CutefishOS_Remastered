@@ -7,9 +7,9 @@ Goal: macOS's "Displays have separate Spaces". Each monitor switches its own wor
 | Feature | Where |
 |---|---|
 | Each display switches workspaces on its own | Our KWin build: per-output virtual desktops (setting `[Windows] PerOutputVirtualDesktops=true`, on by default) |
-| A status bar (with global menu, clock, control centre) on every display | `cutefish-shell` creates one `StatusBar` per extra screen |
+| A status bar (with global menu, clock, control centre) on every display | `cutefish-shell` creates one `StatusBar` per extra screen. The volume, Wi-Fi and battery icons are the control-centre button, so every bar shows them, as on macOS |
 | The app menu appears on the display that holds the active window | `AppMenuModel.activeWindowGeometry` + `activeWindowOnThisScreen` in the status bar QML |
-| System tray and the notification-centre shortcut on the main display only | Tray items can register with only one watcher; the D-Bus names are owned once |
+| System tray (app icons from StatusNotifierItem) and the notification-centre shortcut on the main display only | Tray items can register with only one watcher; the D-Bus names are owned once |
 | Dock on the main display | unchanged upstream behaviour |
 | Launcher opens on the display under the pointer | Asks KWin for its active output (`org.kde.KWin.activeOutputName`), which follows the pointer |
 | Mission Control | KWin Overview effect, **Meta+W** (per-display after the backport) |
