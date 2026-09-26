@@ -209,7 +209,8 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Fix:** `libdrm-dev` is in `Build-Depends`, and KWin is `REQUIRED`, so a missing dependency now fails the build instead of dropping the effect (`patches/kwin-plugins/0003`).
 - **Then:** With the effect finally compiled, it failed on `opengl/openglcontext.h`: KWin 6.6 folded `OpenGlContext` into `EglContext` (`opengl/eglcontext.h`, same `isOpenGLES()`/`glslVersion()`) (`patches/kwin-plugins/0004`).
 
-## 34. The Calamares fork failed to link a test
-- **Symptom:** The first build of `src/calamares-ubuntu` stopped at `test_automount`: `libboost_python314.so: undefined reference to 'PyObject_DelAttr'`.
-- **Cause:** The test links boost_python without libpython. Ubuntu's `debian/rules` already skips running the tests (`override_dh_auto_test:` is empty) but still builds them.
-- **Fix:** `scripts/fetch.sh` adds `-DBUILD_TESTING=OFF` to the configure line in `debian/rules`; the installer itself was never affected.
+## 34. The Calamares fork linked the wrong Python
+- **Symptom:** The first build of `src/calamares-ubuntu` stopped at `test_automount`: `libboost_python314.so: undefined reference to 'PyObject_DelAttr'`. With the tests turned off, the next target that links boost_python failed the same way.
+- **Cause:** CMake reported `Found Python: /usr/local/bin/python3 (found suitable version "3.12.1")`. That is Modal's own Python, first in `PATH` in its image. Calamares linked libpython 3.12 next to Ubuntu's boost_python, which is built for Python 3.14 (`PyObject_DelAttr` became a real function in 3.13). The installer's Python job modules would have been built against the wrong Python too.
+- **Fix:** `scripts/fetch.sh` adds `-DPython_EXECUTABLE=/usr/bin/python3` to the configure line in `debian/rules`, plus `-DBUILD_TESTING=OFF` (Ubuntu doesn't run the tests either).
+- **Lesson:** A builder image carries tools of its own. When a fork links against a system library, name the system interpreter or toolchain explicitly.
