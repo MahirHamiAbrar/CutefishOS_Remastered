@@ -29,7 +29,7 @@ app ──connect()──► kernel ──(eBPF/nfqueue)──► opensnitchd (r
 
 ## Incoming: default deny, logged
 
-`cutefish-firewall.service` loads `/etc/cutefish/cutefish-firewall.nft`, an nftables table `inet cutefish_firewall` with input policy **drop**. Accepted:
+`cutefish-firewall.service` loads `/etc/cutefish-firewall.nft`, an nftables table `inet cutefish_firewall` with input policy **drop**. Accepted:
 
 - replies to connections this machine made (`ct state established,related`);
 - loopback and ICMP/ICMPv6 (IPv6 needs neighbour discovery);

@@ -38,6 +38,7 @@ target_link_libraries(cutefish-netmonitor PRIVATE
 
 install(TARGETS cutefish-netmonitor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES data/cutefish-netmonitor.desktop DESTINATION /etc/xdg/autostart)
-install(FILES data/cutefish-firewall.nft DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/cutefish)
+# Not under /etc/cutefish: that path is cutefish-core's version file.
+install(FILES data/cutefish-firewall.nft DESTINATION ${CMAKE_INSTALL_SYSCONFDIR})
 install(FILES data/cutefish-firewall.service DESTINATION /usr/lib/systemd/system)
 install(DIRECTORY data/opensnitch-rules/ DESTINATION ${CMAKE_INSTALL_DATADIR}/cutefish-netmonitor/opensnitch-rules)

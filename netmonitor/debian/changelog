@@ -1,3 +1,11 @@
+cutefish-netmonitor (0.2) resolute; urgency=medium
+
+  * Move the inbound firewall rules to /etc/cutefish-firewall.nft. The
+    /etc/cutefish directory replaced cutefish-core's /etc/cutefish version
+    file, and newer cutefish-core packages failed to install over it.
+
+ -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 04:20:16 -0000
+
 cutefish-netmonitor (0.1) resolute; urgency=medium
 
   * Initial release: native OpenSnitch UI, inbound firewall.
