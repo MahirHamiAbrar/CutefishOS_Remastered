@@ -42,3 +42,18 @@ The test VM has:
 | 14 | Installed system | log in, repeat 2–9 | same results |
 
 Results and the problems they turned up go into [setbacks.md](setbacks.md) and [known-issues.md](known-issues.md).
+
+## Results
+
+### 2026-09-26: fresh ISO (UEFI VM, shell 0.8+remastered3, meta 26.04.2 → 26.04.3)
+
+| # | Result | Notes |
+|---|---|---|
+| 1 | UEFI: pass | Live user logged in automatically; guest tools ready 30 s after start. BIOS not run yet |
+| 3 | pass | Status bar, dock, launcher. Found: the launcher listed two installers ("Install Cutefish OS" and Calamares' own "Install System"); fixed in meta 26.04.3 (Calamares' entry is diverted) |
+| 4 | pass (Cutefish apps) | Settings' sidebar is frosted over the wallpaper; `blur` effect loaded. Per-app blur for Firefox not rechecked |
+| 5 | pass (partly) | `test-spaces.sh`: `PASS Virtual-1: Desktop 1 -> Desktop 1, Virtual-2: Desktop 1 -> Desktop 2`. Display 2 has its own status bar and no dock. The launcher opens on the display KWin reports as active (checked on both displays by moving the active output with a KWin script); on display 1 it leaves room for the dock. The app menu shows only on the focused window's display. Keyboard shortcuts and the overview not checked (no way to send Meta combos into the guest yet) |
+| 6 | pass (Text Editor) | "Cutefish Text Editor · File" in the status bar |
+| — | NetMonitor, NetworkManager, OpenSnitch | running after boot, with no manual fixes (they needed hand fixes on the first boot, see setbacks §16) |
+
+To move KWin's active output in the guest without a mouse, run a KWin script with `workspace.slotSwitchToNextScreen();` (loaded through `org.kde.KWin /Scripting loadScript`, the same way `test-spaces.sh` does).
