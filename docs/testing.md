@@ -111,4 +111,4 @@ These ran in the Ubuntu 26.04 build container, not in a booted system. The VM ro
 | 13 | pass | The installer now opens by itself at login (§25) and gets through the firewall (the `cutefish-live-installer` rule; the geoip lookup works). The welcome page still said "not connected" until the check URL was changed (§30, meta 26.04.7; checked by hand in the live system). Erase-disk install with `grub-install --target=i386-pc`, 41 jobs, no errors, nothing fixed by hand; `ubuntu-drivers install` ran |
 | 14 | pass | Boots from disk, login works. `LANG=en_US.UTF-8` with `LC_TIME=bn_BD` (English UI, Bengali clock, §28); no failed units; opensnitch and the firewall active; the live installer rule and live packages are gone |
 
-**Not yet in an ISO:** meta 26.04.7 (the Internet check URL). It's built; the next `build-iso.sh` picks it up.
+**Final ISO** (meta 26.04.7, sha256 `e7b866a3…0950e`): booted in BIOS; the installer opens by itself, `hasInternet : true`, no requirement warnings.
