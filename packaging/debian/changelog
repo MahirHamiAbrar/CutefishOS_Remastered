@@ -4,6 +4,10 @@ cutefish-meta (26.04.3) resolute; urgency=medium
     already starts VBoxDRMClient once virtualbox-guest-x11 is installed.
   * calamares-settings-cutefish: divert Calamares' "Install System" menu
     entry, which duplicated "Install Cutefish OS".
+  * cutefish-desktop: ship a Cutefish lock screen for kscreenlocker
+    (Plasma/Shell package org.cutefish.desktop). The greeter's built-in
+    fallback needs Plasma workspace modules, so it crashed in a loop and the
+    session could not be unlocked.
 
  -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 03:15:11 -0000
 

@@ -1,0 +1,10 @@
+{
+    "KPackageStructure": "Plasma/Shell",
+    "KPlugin": {
+        "Id": "org.cutefish.desktop",
+        "Name": "Cutefish",
+        "Description": "Cutefish lock screen for kscreenlocker",
+        "License": "GPL-3.0-or-later"
+    },
+    "X-Plasma-APIVersion": "2"
+}
