@@ -23,6 +23,12 @@ Depends: ${misc:Depends},
 # Sound, fonts, global menu for GTK apps
          pipewire-pulse, wireplumber, pipewire-alsa,
          fonts-noto-core, fonts-noto-color-emoji, fonts-noto-cjk,
+# Default fonts: Inter (UI), JetBrains Mono (monospace), Fantasque Sans Mono (Terminal)
+         fonts-inter, fonts-jetbrains-mono, fonts-fantasque-sans,
+# fish as the default shell (oh-my-fish + neolambda seeded in /etc/skel)
+         fish,
+# Neovim with LazyVim (seeded in /etc/skel) and what LazyVim needs
+         neovim, git, ripgrep, fd-find, unzip, gcc, make, tree-sitter-cli,
          appmenu-gtk3-module, qt6-svg-plugins, breeze-icon-theme, milou,
 # Everyday apps (Firefox from Mozilla's APT repository, no snap)
          firefox, mpv, ark, curl

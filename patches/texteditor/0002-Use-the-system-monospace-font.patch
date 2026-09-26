@@ -1,0 +1,49 @@
+From 939088d263a82286fe9ec98bfe479d775ff4cf5e Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:08:35 +0600
+Subject: [PATCH 2/2] Use the system monospace font
+
+---
+ debian/changelog   | 6 ++++++
+ qml/TextEditor.qml | 4 ++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index d04f7db..2930daf 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-texteditor (0.7+remastered2) resolute; urgency=medium
++
++  * Use the system monospace font
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:08:35 +0600
++
+ cutefish-texteditor (0.7+remastered1) resolute; urgency=medium
+ 
+   * Port to Qt 6 / KF6, open files from the command line, add File menu,
+diff --git a/qml/TextEditor.qml b/qml/TextEditor.qml
+index 66adff0..29ddcf3 100644
+--- a/qml/TextEditor.qml
++++ b/qml/TextEditor.qml
+@@ -75,7 +75,7 @@ Item {
+                 padding: FishUI.Units.smallSpacing
+                 color: FishUI.Theme.textColor
+ 
+-                font.family: "Noto Mono"
++                font.family: "monospace"
+ 
+                 background: Rectangle {
+                     color: FishUI.Theme.backgroundColor
+@@ -185,7 +185,7 @@ Item {
+                     font.pointSize: body.font.pointSize
+                     horizontalAlignment: Text.AlignHCenter
+                     verticalAlignment: Text.AlignVCenter
+-                    font.family: "Monospace"
++                    font.family: "monospace"
+                     text: index + 1
+                 }
+             }
+-- 
+2.43.0
+

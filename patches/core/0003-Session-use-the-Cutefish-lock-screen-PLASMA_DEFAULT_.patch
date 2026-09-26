@@ -1,7 +1,7 @@
 From 93a19a247346bf99b083fd7204309aedd92048ca Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sat, 26 Sep 2026 10:11:41 +0600
-Subject: [PATCH 3/4] Session: use the Cutefish lock screen
+Subject: [PATCH 3/5] Session: use the Cutefish lock screen
  (PLASMA_DEFAULT_SHELL)
 
 ---

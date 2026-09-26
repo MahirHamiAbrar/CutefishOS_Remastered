@@ -1,3 +1,12 @@
+cutefish-meta (26.04.8) resolute; urgency=medium
+
+  * cutefish-desktop: Inter, JetBrains Mono and Fantasque Sans Mono as the
+    default fonts (fontconfig aliases in /etc/fonts/conf.d); fish as the
+    default shell for new users; Neovim and the tools LazyVim needs.
+  * calamares-settings-cutefish: the installed user gets /usr/bin/fish.
+
+ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:08:35 +0600
+
 cutefish-meta (26.04.7) resolute; urgency=medium
 
   * calamares-settings-cutefish: check for the Internet with

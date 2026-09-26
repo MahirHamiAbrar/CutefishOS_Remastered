@@ -1,24 +1,28 @@
-From 1d7ad5468210611606b3f976b64981fec13b22b1 Mon Sep 17 00:00:00 2001
+From 8b8b7f77ab18c248e0892bf79758b7f314cd2876 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 01:39:30 +0600
-Subject: [PATCH 2/2] Label, ScrollBar, Slider, Switch, RoundedRectangle;
+Subject: [PATCH 2/3] Label, ScrollBar, Slider, Switch, RoundedRectangle;
  Window.blurEnabled/headerDarkMode; RoundImageButton.iconName/iconColor;
  ConfirmDialog.parentWindow/showOnCompleted/open() for Terminal
 
 ---
  debian/changelog                  |  6 ++++++
- src/controls/ConfirmDialog.qml    | 10 ++++++++--
+ src/controls/ConfirmDialog.qml    | 11 +++++++++--
  src/controls/Label.qml            |  8 ++++++++
+ src/controls/MenuSurface.qml      |  2 +-
  src/controls/RoundImageButton.qml | 10 ++++++++++
  src/controls/RoundedRectangle.qml |  6 ++++++
  src/controls/ScrollBar.qml        | 29 +++++++++++++++++++++++++++++
  src/controls/Slider.qml           |  5 +++++
  src/controls/Switch.qml           |  5 +++++
- src/controls/Window.qml           | 11 ++++++++---
+ src/controls/Theme.qml            |  4 +++-
+ src/controls/Window.qml           | 16 +++++++++++-----
  src/controls/qmldir               |  5 +++++
  src/fishui.cpp                    |  7 +++++++
  src/fishui.qrc                    |  5 +++++
- 12 files changed, 102 insertions(+), 5 deletions(-)
+ src/thememanager.cpp              |  2 ++
+ src/thememanager.h                |  6 ++++++
+ 16 files changed, 118 insertions(+), 9 deletions(-)
  create mode 100644 src/controls/Label.qml
  create mode 100644 src/controls/RoundedRectangle.qml
  create mode 100644 src/controls/ScrollBar.qml
@@ -40,21 +44,26 @@ index d323fa0..1599e9c 100644
  
    * Blur and translucency behind every FishUI window by default (macOS vibrancy)
 diff --git a/src/controls/ConfirmDialog.qml b/src/controls/ConfirmDialog.qml
-index 494fe41..4eb04aa 100644
+index 494fe41..8e80933 100644
 --- a/src/controls/ConfirmDialog.qml
 +++ b/src/controls/ConfirmDialog.qml
-@@ -11,6 +11,10 @@ FishUI.Window {
+@@ -11,10 +11,15 @@ FishUI.Window {
      property string confirmText: qsTr("Confirm")
      property bool destructive: false
      property bool confirmEnabled: true
 +    //! The window this dialog belongs to (its transient parent).
-+    property alias parentWindow: control.transientParent
++    property var parentWindow: null
 +    //! Show as soon as the dialog is created; false to show it with open().
 +    property bool showOnCompleted: true
  
      signal accepted()
      signal rejected()
-@@ -43,11 +47,13 @@ FishUI.Window {
+ 
++    transientParent: parentWindow
+     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+     modality: Qt.WindowModal
+     visible: false
+@@ -43,11 +48,13 @@ FishUI.Window {
      property bool _accepted: false
  
      // Let wrapped text and layout sizing settle before mapping the window.
@@ -84,6 +93,19 @@ index 0000000..1581652
 +QQC2.Label {
 +    color: FishUI.Theme.textColor
 +}
+diff --git a/src/controls/MenuSurface.qml b/src/controls/MenuSurface.qml
+index 6f78ff5..a045b8b 100644
+--- a/src/controls/MenuSurface.qml
++++ b/src/controls/MenuSurface.qml
+@@ -44,7 +44,7 @@ Item {
+                        FishUI.Theme.secondBackgroundColor.g,
+                        FishUI.Theme.secondBackgroundColor.b,
+                        control.blurEnabled ? 0.86 : 1)
+-        radius: FishUI.Theme.windowRadius
++        radius: FishUI.Theme.hugeRadius
+         border.color: _background.borderColor
+         border.width: 1 / FishUI.Dpi.ratio
+         border.pixelAligned: FishUI.Dpi.ratio > 1 ? false : true
 diff --git a/src/controls/RoundImageButton.qml b/src/controls/RoundImageButton.qml
 index c752995..ed443fe 100644
 --- a/src/controls/RoundImageButton.qml
@@ -187,15 +209,40 @@ index 0000000..2415799
 +
 +// The Fish style's switch, under the FishUI namespace.
 +QQC2.Switch {}
+diff --git a/src/controls/Theme.qml b/src/controls/Theme.qml
+index b064889..7caaaf6 100644
+--- a/src/controls/Theme.qml
++++ b/src/controls/Theme.qml
+@@ -27,6 +27,8 @@ QtObject {
+ 
+     property bool darkMode: FishUICore.ThemeManager.darkMode
+     property bool blurEnabled: FishUICore.ThemeManager.blurEnabled
++    // Opacity of blurred windows (Settings → Blur & Transparency).
++    property real windowOpacity: FishUICore.ThemeManager.windowOpacity
+ 
+     property color blueColor: FishUICore.ThemeManager.blueColor
+     property color redColor: FishUICore.ThemeManager.redColor
+@@ -61,7 +63,7 @@ QtObject {
+     property real mediumRadius: 10.0
+     property real bigRadius: 12.0
+     property real hugeRadius: 14.0
+-    property real windowRadius: 14.0
++    property real windowRadius: FishUICore.ThemeManager.windowRadius
+ 
+     property var renderType: Text.QtRendering
+ 
 diff --git a/src/controls/Window.qml b/src/controls/Window.qml
-index 0abbe94..8b1b4b3 100644
+index 0abbe94..1fe39a8 100644
 --- a/src/controls/Window.qml
 +++ b/src/controls/Window.qml
-@@ -59,6 +59,11 @@ Window {
+@@ -58,7 +58,13 @@ Window {
+     // macOS-like vibrancy: every FishUI window is translucent with the desktop
      // blurred behind it while blur is enabled in Settings. Apps can opt out by
      // setting blurBehind: false or override background.opacity.
-     property bool blurBehind: FishUI.Theme.blurEnabled
-+    property alias blurEnabled: control.blurBehind
+-    property bool blurBehind: FishUI.Theme.blurEnabled
++    // blurEnabled is the name Terminal uses; set either.
++    property bool blurEnabled: FishUI.Theme.blurEnabled
++    property bool blurBehind: blurEnabled
 +
 +    // Whether the header is dark, for the window buttons' artwork. Apps that
 +    // paint their own header (a terminal colour scheme) set it themselves.
@@ -203,7 +250,16 @@ index 0abbe94..8b1b4b3 100644
  
      property var windowButtonsAlignment: Qt.AlignTop
      property real windowButtonsTopMargin: FishUI.Units.smallSpacing
-@@ -299,7 +304,7 @@ Window {
+@@ -211,7 +217,7 @@ Window {
+         anchors.fill: parent
+         radius: !isMaximized && !isFullScreen ? control.windowRadius : 0
+         color: FishUI.Theme.backgroundColor
+-        opacity: control.blurBehind ? (FishUI.Theme.darkMode ? 0.78 : 0.82) : 1
++        opacity: control.blurBehind ? Math.max(0.3, FishUI.Theme.windowOpacity - (FishUI.Theme.darkMode ? 0.04 : 0)) : 1
+         antialiasing: true
+ 
+         border.width: control._borderWidth
+@@ -299,7 +305,7 @@ Window {
                      // Window buttons
                      RoundImageButton {
                          size: _header.buttonSize
@@ -212,7 +268,7 @@ index 0abbe94..8b1b4b3 100644
                          onClicked: windowHelper.minimizeWindow(control)
                          visible: control.minimizeButtonVisible
                          Layout.alignment: control.windowButtonsAlignment
-@@ -313,7 +318,7 @@ Window {
+@@ -313,7 +319,7 @@ Window {
                      RoundImageButton {
                          size: _header.buttonSize
                          source: "qrc:/fishui/kit/images/" +
@@ -221,7 +277,7 @@ index 0abbe94..8b1b4b3 100644
                              (control.visibility === Window.Maximized ? "restore.svg" : "maximize.svg")
                          onClicked: control.toggleMaximized()
                          visible: !control.isFullScreen &&  control.minimumWidth !== control.maximumWidth && control.maximumHeight !== control.minimumHeight
-@@ -327,7 +332,7 @@ Window {
+@@ -327,7 +333,7 @@ Window {
  
                      RoundImageButton {
                          size: _header.buttonSize
@@ -277,6 +333,50 @@ index 60aa36c..be8fc5a 100644
      </qresource>
      <qresource prefix="/"/>
  </RCC>
+diff --git a/src/thememanager.cpp b/src/thememanager.cpp
+index df67cb9..78008b7 100644
+--- a/src/thememanager.cpp
++++ b/src/thememanager.cpp
+@@ -28,6 +28,8 @@ ThemeManager::ThemeManager(QObject *parent)
+ {
+     connect(&m_appearance, &Appearance::darkModeChanged, this, &ThemeManager::darkModeChanged);
+     connect(&m_appearance, &Appearance::blurEnabledChanged, this, &ThemeManager::blurEnabledChanged);
++    connect(&m_appearance, &Appearance::windowOpacityChanged, this, &ThemeManager::windowOpacityChanged);
++    connect(&m_appearance, &Appearance::windowRadiusChanged, this, &ThemeManager::windowRadiusChanged);
+     connect(&m_appearance, &Appearance::fontPointSizeChanged, this, &ThemeManager::fontSizeChanged);
+     connect(&m_appearance, &Appearance::fontFamilyChanged, this, &ThemeManager::fontFamilyChanged);
+     connect(&m_appearance, &Appearance::accentColorIndexChanged, this, &ThemeManager::updateAccentColor);
+diff --git a/src/thememanager.h b/src/thememanager.h
+index 85235e5..01e4b97 100644
+--- a/src/thememanager.h
++++ b/src/thememanager.h
+@@ -38,6 +38,8 @@ class ThemeManager : public QObject
+     Q_OBJECT
+     Q_PROPERTY(bool darkMode READ darkMode NOTIFY darkModeChanged)
+     Q_PROPERTY(bool blurEnabled READ blurEnabled NOTIFY blurEnabledChanged)
++    Q_PROPERTY(qreal windowOpacity READ windowOpacity NOTIFY windowOpacityChanged)
++    Q_PROPERTY(int windowRadius READ windowRadius NOTIFY windowRadiusChanged)
+     Q_PROPERTY(QColor accentColor READ accentColor NOTIFY accentColorChanged)
+     Q_PROPERTY(QColor blueColor READ blueColor CONSTANT)
+     Q_PROPERTY(QColor redColor READ redColor CONSTANT)
+@@ -54,6 +56,8 @@ public:
+ 
+     bool darkMode() const { return m_appearance.darkMode(); }
+     bool blurEnabled() const { return m_appearance.blurEnabled(); }
++    qreal windowOpacity() const { return m_appearance.windowOpacity(); }
++    int windowRadius() const { return m_appearance.windowRadius(); }
+ 
+     QColor accentColor() const { return m_accentColor; }
+     qreal fontSize() const { return m_appearance.fontPointSize(); }
+@@ -76,6 +80,8 @@ public:
+ signals:
+     void darkModeChanged();
+     void blurEnabledChanged();
++    void windowOpacityChanged();
++    void windowRadiusChanged();
+     void accentColorChanged();
+     void fontSizeChanged();
+     void fontFamilyChanged();
 -- 
 2.43.0
 

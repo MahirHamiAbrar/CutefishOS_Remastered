@@ -1,0 +1,47 @@
+From fb355c068a9071659030dec426a1322047dc8a21 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:08:35 +0600
+Subject: [PATCH 2/2] Inter / JetBrains Mono as the fallback fonts
+
+---
+ debian/changelog               | 6 ++++++
+ platformtheme/hintsettings.cpp | 4 ++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 0e4eaab..e278871 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-qt-plugins (0.6+remastered2) resolute; urgency=medium
++
++  * Inter / JetBrains Mono as the fallback fonts
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:08:35 +0600
++
+ cutefish-qt-plugins (0.6+remastered1) resolute; urgency=medium
+ 
+   * Follow the icon theme rename: Crule(-dark) is now Cutefish-Light/-Dark
+diff --git a/platformtheme/hintsettings.cpp b/platformtheme/hintsettings.cpp
+index 6f09b22..79a81ce 100644
+--- a/platformtheme/hintsettings.cpp
++++ b/platformtheme/hintsettings.cpp
+@@ -99,13 +99,13 @@ QStringList HintsSettings::xdgIconThemePaths() const
+ 
+ QString HintsSettings::systemFont() const
+ {
+-    return availableFontFamily(m_settings->value(s_systemFontName, "Noto Sans").toString(),
++    return availableFontFamily(m_settings->value(s_systemFontName, "Inter").toString(),
+                                QStringLiteral("DejaVu Sans"));
+ }
+ 
+ QString HintsSettings::systemFixedFont() const
+ {
+-    return availableFontFamily(m_settings->value(s_systemFixedFontName, "Monospace").toString(),
++    return availableFontFamily(m_settings->value(s_systemFixedFontName, "JetBrains Mono").toString(),
+                                QStringLiteral("DejaVu Sans Mono"));
+ }
+ 
+-- 
+2.43.0
+

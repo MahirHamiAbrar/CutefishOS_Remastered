@@ -27,6 +27,23 @@ index
 echo "deb [trusted=yes] copy:$OUT/repo ./" > /etc/apt/sources.list.d/local.list
 apt-get update -qq 2>/dev/null
 
+# Every file in our debs used to come out dated 2022-01-01 (the builder's
+# clock). Qt keeps using its QML disk cache for QML compiled into a binary as
+# long as the binary's mtime is unchanged, so an upgraded app went on running
+# its old QML (setback 31). Stamp each package's files with its changelog date
+# (dpkg-buildpackage exports it as SOURCE_DATE_EPOCH) right before dpkg-deb
+# packs them, so every new version has new mtimes.
+cat > /usr/local/bin/dpkg-deb <<'EOF'
+#!/bin/sh
+if [ -n "$SOURCE_DATE_EPOCH" ]; then
+    for arg in "$@"; do
+        [ -d "$arg/DEBIAN" ] && find "$arg" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
+    done
+fi
+exec /usr/bin/dpkg-deb "$@"
+EOF
+chmod +x /usr/local/bin/dpkg-deb
+
 # Copy a source tree into the volume, keeping its build tree (obj-*).
 sync_tree() {
     local from=$1 to=$2

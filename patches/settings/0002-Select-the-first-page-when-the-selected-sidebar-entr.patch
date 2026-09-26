@@ -1,7 +1,7 @@
 From fb4ef17b79d6eadb9ccf54f47e7ebd58766ffb0a Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sat, 26 Sep 2026 05:09:34 +0000
-Subject: [PATCH 2/3] Select the first page when the selected sidebar entry is
+Subject: [PATCH 2/4] Select the first page when the selected sidebar entry is
  removed (no Wi-Fi card)
 
 ---

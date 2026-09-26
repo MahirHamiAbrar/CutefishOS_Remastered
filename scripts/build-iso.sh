@@ -78,6 +78,24 @@ sed -i 's/^# *\(en_US.UTF-8\)/\1/' "$ROOT/etc/locale.gen"
 
 mount --bind /dev "$ROOT/dev"; mount -t proc proc "$ROOT/proc"; mount -t sysfs sys "$ROOT/sys"
 trap 'umount -lf "$ROOT/dev" "$ROOT/proc" "$ROOT/sys" 2>/dev/null || true' EXIT
+# oh-my-fish (neolambda) and LazyVim for every new user, fetched now so the
+# installed system has them offline. The chroot needs a working resolver.
+echo ">>> seeding /etc/skel"
+mv "$ROOT/etc/resolv.conf" "$ROOT/etc/resolv.conf.iso" 2>/dev/null || true
+cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
+cp /ws/packaging/files/skel/seed-skel.sh "$ROOT/tmp/"
+lock=""
+if [[ -f /ws/packaging/files/skel/lazy-lock.json ]]; then
+    cp /ws/packaging/files/skel/lazy-lock.json "$ROOT/tmp/lazy-lock.json"; lock=/tmp/lazy-lock.json
+fi
+chroot "$ROOT" /tmp/seed-skel.sh "$lock" /tmp/lazy-lock.new.json 2>&1 | tee /ws/build/logs/iso-skel.log
+[[ ${PIPESTATUS[0]} -eq 0 ]] || { echo "seeding /etc/skel failed, see build/logs/iso-skel.log" >&2; exit 1; }
+# First build without a pinned lock: keep the one it made, to commit as
+# packaging/files/skel/lazy-lock.json.
+[[ -f $ROOT/tmp/lazy-lock.new.json ]] && cp "$ROOT/tmp/lazy-lock.new.json" /ws/build/lazy-lock.json
+rm -f "$ROOT/etc/resolv.conf"
+mv "$ROOT/etc/resolv.conf.iso" "$ROOT/etc/resolv.conf" 2>/dev/null || true
+
 chroot "$ROOT" /bin/bash -e <<'CHROOT'
 locale-gen >/dev/null
 update-locale LANG=en_US.UTF-8

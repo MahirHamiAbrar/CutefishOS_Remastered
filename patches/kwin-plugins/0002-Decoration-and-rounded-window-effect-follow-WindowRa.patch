@@ -1,0 +1,137 @@
+From adefca97ed06a4d0feccbe4acb5d0717643595d9 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:08:35 +0600
+Subject: [PATCH 2/2] Decoration and rounded-window effect follow WindowRadius
+ from theme.conf
+
+---
+ debian/changelog                        |  6 ++++++
+ plugins/decoration/decoration.cpp       |  2 ++
+ plugins/decoration/decoration.h         |  2 +-
+ plugins/roundedwindow/roundedwindow.cpp | 22 +++++++++++++++++++++-
+ plugins/roundedwindow/roundedwindow.h   |  5 +++++
+ 5 files changed, 35 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 29552b9..bfe07c4 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-kwin-plugins (0.8+remastered2) resolute; urgency=medium
++
++  * Decoration and rounded-window effect follow WindowRadius from theme.conf
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:08:35 +0600
++
+ cutefish-kwin-plugins (0.8+remastered1) resolute; urgency=medium
+ 
+   * Depend on the Cutefish KWin build (per-output desktops, ForceBlurClasses).
+diff --git a/plugins/decoration/decoration.cpp b/plugins/decoration/decoration.cpp
+index 02b5bc1..266d963 100644
+--- a/plugins/decoration/decoration.cpp
++++ b/plugins/decoration/decoration.cpp
+@@ -249,6 +249,8 @@ void Decoration::reloadTheme()
+     m_themeSettings.sync();
+ 
+     m_darkMode = m_themeSettings.value(QStringLiteral("DarkMode"), false).toBool();
++    // Settings → Appearance → Window corners; the same value FishUI windows use.
++    m_frameRadius = qBound(0, m_themeSettings.value(QStringLiteral("WindowRadius"), 14).toInt(), 24);
+ 
+     updateButtonPixmaps();
+     updateShadow();
+diff --git a/plugins/decoration/decoration.h b/plugins/decoration/decoration.h
+index 4f4ae4c..7754444 100644
+--- a/plugins/decoration/decoration.h
++++ b/plugins/decoration/decoration.h
+@@ -44,7 +44,7 @@ private:
+ 
+     bool m_darkMode = false;
+     int m_titleBarHeight = 30;
+-    int m_frameRadius = 11;
++    int m_frameRadius = 14;
+     QColor m_titleBarBgColor = QColor(255, 255, 255);
+     QColor m_titleBarFgColor = QColor(56, 56, 56);
+     QColor m_unfocusedFgColor = QColor(127, 127, 127);
+diff --git a/plugins/roundedwindow/roundedwindow.cpp b/plugins/roundedwindow/roundedwindow.cpp
+index fcfc57f..75344e7 100644
+--- a/plugins/roundedwindow/roundedwindow.cpp
++++ b/plugins/roundedwindow/roundedwindow.cpp
+@@ -9,6 +9,7 @@
+ #include <opengl/openglcontext.h>
+ #include <utils/version.h>
+ 
++#include <QSettings>
+ #include <QVector2D>
+ #include <QVector4D>
+ 
+@@ -207,6 +208,19 @@ static QByteArray fragmentShaderSource()
+ RoundedWindow::RoundedWindow()
+     : KWin::OffscreenEffect()
+ {
++    // Follow Settings → Appearance → Window corners while running.
++    m_themeSettingsFile = QSettings(QSettings::UserScope, QStringLiteral("cutefishos"),
++                                    QStringLiteral("theme")).fileName();
++    reloadRadius();
++    m_themeWatcher.addPath(m_themeSettingsFile);
++    connect(&m_themeWatcher, &QFileSystemWatcher::fileChanged, this, [this] {
++        reloadRadius();
++        KWin::effects->addRepaintFull();
++        // QSettings replaces the file when it writes, which drops the watch.
++        if (!m_themeWatcher.files().contains(m_themeSettingsFile))
++            m_themeWatcher.addPath(m_themeSettingsFile);
++    });
++
+     auto watchWindow = [this](KWin::EffectWindow *window) {
+         connect(window, &KWin::EffectWindow::windowMaximizedStateAboutToChange, this,
+                 [this](KWin::EffectWindow *w, bool horizontal, bool vertical) {
+@@ -271,7 +285,7 @@ bool RoundedWindow::enabledByDefault()
+ 
+ bool RoundedWindow::shouldRound(KWin::EffectWindow *window) const
+ {
+-    if (!window || !window->isManaged()) {
++    if (!window || !window->isManaged() || m_frameRadius <= 0) {
+         return false;
+     }
+ 
+@@ -447,4 +461,10 @@ KWIN_EFFECT_FACTORY_SUPPORTED_ENABLED(RoundedWindow,
+                                       return RoundedWindow::enabledByDefault();)
+ }
+ 
++void RoundedWindow::reloadRadius()
++{
++    QSettings settings(m_themeSettingsFile, QSettings::IniFormat);
++    m_frameRadius = qBound(0, settings.value(QStringLiteral("WindowRadius"), 14).toInt(), 24);
++}
++
+ #include "roundedwindow.moc"
+diff --git a/plugins/roundedwindow/roundedwindow.h b/plugins/roundedwindow/roundedwindow.h
+index c448b47..01912dd 100644
+--- a/plugins/roundedwindow/roundedwindow.h
++++ b/plugins/roundedwindow/roundedwindow.h
+@@ -2,6 +2,7 @@
+ 
+ #include <effect/offscreeneffect.h>
+ 
++#include <QFileSystemWatcher>
+ #include <QSet>
+ 
+ #include <memory>
+@@ -48,6 +49,7 @@ private:
+     bool shouldRound(KWin::EffectWindow *window) const;
+     bool isMaximized(KWin::EffectWindow *window) const;
+     KWin::GLShader *shader();
++    void reloadRadius();
+ 
+     std::unique_ptr<KWin::GLShader> m_shader;
+     QSet<KWin::EffectWindow *> m_roundedWindows;
+@@ -55,4 +57,7 @@ private:
+     QSet<KWin::EffectWindow *> m_maximizingWindows;
+     QSet<KWin::EffectWindow *> m_restoringWindows;
+     qreal m_frameRadius = 14;
++    // ~/.config/cutefishos/theme.conf, for WindowRadius.
++    QString m_themeSettingsFile;
++    QFileSystemWatcher m_themeWatcher;
+ };
+-- 
+2.43.0
+

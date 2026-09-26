@@ -5,4 +5,20 @@ if [ "$1" = configure ]; then
     [ -e /etc/apt/sources.list.d/mozilla.sources ] || cp /usr/share/cutefish-desktop/mozilla.sources /etc/apt/sources.list.d/
     [ -e /etc/apt/preferences.d/mozilla ] || cp /usr/share/cutefish-desktop/mozilla.pref /etc/apt/preferences.d/mozilla
 fi
+
+# fish is the default shell for new users: casper's live user and adduser
+# (DSHELL), useradd (SHELL). Only on install/upgrade from before 26.04.8, so
+# an admin who changes it back keeps their choice.
+if [ "$1" = configure ] && { [ -z "$2" ] || dpkg --compare-versions "$2" lt 26.04.8; }; then
+    if [ -f /etc/adduser.conf ]; then
+        if grep -q '^#\?DSHELL=' /etc/adduser.conf; then
+            sed -i 's|^#\?DSHELL=.*|DSHELL=/usr/bin/fish|' /etc/adduser.conf
+        else
+            echo 'DSHELL=/usr/bin/fish' >> /etc/adduser.conf
+        fi
+    fi
+    if [ -f /etc/default/useradd ]; then
+        sed -i 's|^SHELL=.*|SHELL=/usr/bin/fish|' /etc/default/useradd
+    fi
+fi
 #DEBHELPER#

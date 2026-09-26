@@ -1,0 +1,114 @@
+From 59a9d8e7814c76372e38285257fdf21917508a4e Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:08:35 +0600
+Subject: [PATCH 2/2] Appearance: windowOpacity and windowRadius
+
+---
+ appearance/appearance.cpp | 26 ++++++++++++++++++++++++++
+ appearance/appearance.h   | 10 ++++++++++
+ debian/changelog          |  6 ++++++
+ 3 files changed, 42 insertions(+)
+
+diff --git a/appearance/appearance.cpp b/appearance/appearance.cpp
+index d93234e..c3c2aca 100644
+--- a/appearance/appearance.cpp
++++ b/appearance/appearance.cpp
+@@ -41,6 +41,8 @@ void Appearance::init()
+     connect(m_interface, SIGNAL(accentColorChanged(int)), this, SLOT(onAccentColorChanged(int)));
+     connect(m_interface, SIGNAL(darkModeDimsWallpaerChanged()), this, SLOT(onDarkModeDimsWallpaperChanged()));
+     connect(m_interface, SIGNAL(blurEnabledChanged()), this, SLOT(onBlurEnabledChanged()));
++    connect(m_interface, SIGNAL(windowOpacityChanged()), this, SIGNAL(windowOpacityChanged()));
++    connect(m_interface, SIGNAL(windowRadiusChanged()), this, SIGNAL(windowRadiusChanged()));
+     connect(m_interface, SIGNAL(systemFontPointSizeChanged()), this, SLOT(onFontPointSizeChanged()));
+     connect(m_interface, SIGNAL(systemFontChanged()), this, SLOT(onFontFamilyChanged()));
+     connect(m_interface, SIGNAL(backgroundTypeChanged()), this, SLOT(onBackgroundTypeChanged()));
+@@ -52,6 +54,8 @@ void Appearance::init()
+     emit accentColorIndexChanged();
+     emit dimsWallpaperChanged();
+     emit blurEnabledChanged();
++    emit windowOpacityChanged();
++    emit windowRadiusChanged();
+     emit fontPointSizeChanged();
+     emit fontFamilyChanged();
+     emit fixedFontFamilyChanged();
+@@ -107,6 +111,28 @@ void Appearance::setBlurEnabled(bool value)
+     callService("setBlurEnabled", value);
+ }
+ 
++double Appearance::windowOpacity() const
++{
++    const QVariant value = serviceProperty("windowOpacity");
++    return value.isValid() ? value.toDouble() : 0.7;
++}
++
++void Appearance::setWindowOpacity(double value)
++{
++    callService("setWindowOpacity", value);
++}
++
++int Appearance::windowRadius() const
++{
++    const QVariant value = serviceProperty("windowRadius");
++    return value.isValid() ? value.toInt() : 14;
++}
++
++void Appearance::setWindowRadius(int value)
++{
++    callService("setWindowRadius", value);
++}
++
+ int Appearance::accentColorIndex() const
+ {
+     return serviceProperty("accentColor").toInt();
+diff --git a/appearance/appearance.h b/appearance/appearance.h
+index e95123e..6c88348 100644
+--- a/appearance/appearance.h
++++ b/appearance/appearance.h
+@@ -13,6 +13,8 @@ class Appearance : public QObject
+     Q_PROPERTY(bool darkMode READ darkMode NOTIFY darkModeChanged)
+     Q_PROPERTY(bool dimsWallpaper READ dimsWallpaper WRITE setDimsWallpaper NOTIFY dimsWallpaperChanged)
+     Q_PROPERTY(bool blurEnabled READ blurEnabled WRITE setBlurEnabled NOTIFY blurEnabledChanged)
++    Q_PROPERTY(double windowOpacity READ windowOpacity WRITE setWindowOpacity NOTIFY windowOpacityChanged)
++    Q_PROPERTY(int windowRadius READ windowRadius WRITE setWindowRadius NOTIFY windowRadiusChanged)
+     Q_PROPERTY(int accentColorIndex READ accentColorIndex NOTIFY accentColorIndexChanged)
+     Q_PROPERTY(qreal fontPointSize READ fontPointSize WRITE setFontPointSize NOTIFY fontPointSizeChanged)
+     Q_PROPERTY(QString fontFamily READ fontFamily WRITE setFontFamily NOTIFY fontFamilyChanged)
+@@ -34,6 +36,12 @@ public:
+     bool blurEnabled() const;
+     Q_INVOKABLE void setBlurEnabled(bool value);
+ 
++    double windowOpacity() const;
++    Q_INVOKABLE void setWindowOpacity(double value);
++
++    int windowRadius() const;
++    Q_INVOKABLE void setWindowRadius(int value);
++
+     int accentColorIndex() const;
+     Q_INVOKABLE void setAccentColor(int accentColor);
+ 
+@@ -64,6 +72,8 @@ signals:
+     void darkModeChanged();
+     void dimsWallpaperChanged();
+     void blurEnabledChanged();
++    void windowOpacityChanged();
++    void windowRadiusChanged();
+     void accentColorIndexChanged();
+     void fontPointSizeChanged();
+     void fontFamilyChanged();
+diff --git a/debian/changelog b/debian/changelog
+index 63176a9..3e105bc 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++libcutefish (0.7+remastered2) resolute; urgency=medium
++
++  * Appearance: windowOpacity and windowRadius
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:08:35 +0600
++
+ libcutefish (0.7+remastered1) resolute; urgency=medium
+ 
+   * Hotspot: store the PSK in NetworkManager, report activation failures
+-- 
+2.43.0
+
