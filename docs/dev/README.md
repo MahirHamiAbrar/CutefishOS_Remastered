@@ -11,7 +11,7 @@ Start with [../architecture.md](../architecture.md) for the whole system, and [.
 | [fishui.md](fishui.md) | UI toolkit: `FishUI` QML module (Window, Theme, controls) and the `Fish` Qt Quick Controls style | [api](api/fishui.md) |
 | [cutefish-framework.md](cutefish-framework.md) | `libcutefish`: QML modules for accounts, appearance, audio, Bluetooth, MPRIS, network, screens; app launching | [api](api/cutefish-framework.md) |
 | [core.md](core.md) | Session manager, settings daemon (`cutefish-services`), polkit agent, app runtime, helpers | [api](api/core.md) |
-| [shell.md](shell.md) | Status bar, dock, launcher, notifications, lock screen, OSDs | [api](api/shell.md) |
+| [shell.md](shell.md) | Status bar (one per display), dock, launcher, desktop surfaces, notification server | [api](api/shell.md) |
 | [settings.md](settings.md) | System Settings application | [api](api/settings.md) |
 | [filemanager.md](filemanager.md) | Files, and the desktop (icons and wallpaper) | [api](api/filemanager.md) |
 | [terminal.md](terminal.md) | Terminal, with its QML terminal widget (`Cutefish.TermWidget`) | [api](api/terminal.md) |
