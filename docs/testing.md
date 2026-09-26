@@ -57,3 +57,6 @@ Results and the problems they turned up go into [setbacks.md](setbacks.md) and [
 | — | NetMonitor, NetworkManager, OpenSnitch | running after boot, with no manual fixes (they needed hand fixes on the first boot, see setbacks §16) |
 
 To move KWin's active output in the guest without a mouse, run a KWin script with `workspace.slotSwitchToNextScreen();` (loaded through `org.kde.KWin /Scripting loadScript`, the same way `test-spaces.sh` does).
+| 7 | prompt: pass; blocking: see note | `curl https://example.org` from the session: prompt "curl wants to connect to example.org (UDP 10.0.2.3 port 53)", frosted, "Denied in 26 s" countdown; unanswered, it logged `deny` after 30 s. But curl still got HTTP 200: its DNS retry and the HTTPS connection passed while the prompt was open (OpenSnitch applies `DefaultAction=allow` while it's asking). Kept by choice, documented in known-issues.md |
+| 9 | pass | Both sticks mounted through udisks from the session (`vm.sh srun`); NTFS uses the kernel `ntfs3` driver; write/read/delete works on both |
+| 10 | pass (same-host) | `mac80211_hwsim radios=2`: `nmcli dev wifi hotspot` on wlan0 (WPA2/WPA3), wlan1 connected and got 10.42.0.127 over DHCP through the firewall. Pinging 10.42.0.1 from wlan1 fails only because both ends are on one machine (the kernel answers a local address through `lo`) |

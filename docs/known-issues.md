@@ -9,6 +9,7 @@
 | NVIDIA 470 and older on Wayland | No GBM support in the legacy driver | nouveau is used |
 | Bluetooth can't be tested in VirtualBox | No virtual controller | Real-hardware checklist |
 | Before login, OpenSnitch allows by default (logged) | There is no UI to ask yet | Set `DefaultAction` to `deny` in `/etc/opensnitchd/default-config.json` and add rules for the system services you use |
+| While a prompt is open, other unknown connections are allowed (including the app's own retry) | OpenSnitch 1.6.9 applies `DefaultAction` (ours: `allow`) to every unknown connection while the UI is asking; it doesn't queue them | Kept by choice (2026-09-26). For strict blocking, set `DefaultAction` to `deny` in `/etc/opensnitchd/default-config.json` and add rules for your system services; see [privacy-netmonitor.md](privacy-netmonitor.md) |
 | `/tmp/osui.sock` could be taken over by another local user | OpenSnitch's default UI socket | Point `Server.Address` at a path only you can create, on shared machines |
 | Upstream `terminal` depends on unpublished framework and FishUI parts | Upstream work in progress | Our patch; drop it when upstream publishes |
 | Text editor is basic | The original was an unfinished prototype | Tabs, syntax highlighting, open/save, global menu only |
