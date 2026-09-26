@@ -61,7 +61,7 @@ create)
     VBoxManage storageattach "$VM" --storagectl USB --port 1 --device 0 --type hdd --medium "$DIR/usb-exfat.vdi"
     echo "created $VM"
     ;;
-start)   (cd "$DIR" && VBoxManage startvm "$VM" --type headless) ;;  # VBoxHeadless logs to the cwd
+start)   VBoxManage startvm "$VM" --type headless ;;
 shot)
     name=${1:?shot name}
     for d in 0 1; do

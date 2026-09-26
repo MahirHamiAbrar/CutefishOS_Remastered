@@ -1,3 +1,5 @@
 /src/
 build/
 .venv/
+# VirtualBox startup logs (written to VBoxSVC's working directory)
+*-VBoxHeadless-*.log
