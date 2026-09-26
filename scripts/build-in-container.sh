@@ -62,6 +62,13 @@ sync_tree() {
 # from ../cutefish-framework, so it must sit next to them in the volume.
 sync_tree $WS/src/cutefish-framework $BUILD/src/cutefish-framework
 
+# Files a package must ship. A component skipped at configure time (a QUIET
+# find_package, say) still gives a package that installs fine (setback 33).
+declare -A must=(
+    [kwin-plugins]="/cutefish_roundedwindow.so"
+    [calamares]="/usr/bin/calamares$"
+)
+
 fail=()
 for p in "$@"; do
     case $p in
@@ -82,6 +89,8 @@ for p in "$@"; do
          mk-build-deps -i -r -t "apt-get -y -q --no-install-recommends" debian/control &&
          rm -f ./*-build-deps_* &&
          dpkg-buildpackage -b -us -uc -j"$jobs" ${RESUME:+-nc} &&
+         { [[ -z ${must[$p]:-} ]] || for d in ../*.deb; do dpkg -c "$d"; done | grep -q "${must[$p]}" ||
+           { echo "no ${must[$p]} in the debs"; false; }; } &&
          cp ../*.deb $OUT/repo/
        ) > "$log" 2>&1; then
         echo "    ok: $(cd $BUILD/src && ls *.deb | tr '\n' ' ')"

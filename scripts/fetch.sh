@@ -78,9 +78,14 @@ CALAMARES_VERSION=3.3.14-0ubuntu25
 if [[ ! -d src/calamares-ubuntu/debian ]]; then
     mkdir -p build/calamares-src
     (cd build/calamares-src && rm -rf calamares calamares_*
-     base=http://archive.ubuntu.com/ubuntu/pool/universe/c/calamares
+     # The archive pool drops a version once it's superseded; Launchpad keeps
+     # every one. dpkg-source checks the files against the .dsc.
+     pool=http://archive.ubuntu.com/ubuntu/pool/universe/c/calamares
+     lp=https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/calamares/$CALAMARES_VERSION
      for f in calamares_$CALAMARES_VERSION.dsc calamares_${CALAMARES_VERSION%-*}.orig.tar.gz \
-              calamares_$CALAMARES_VERSION.debian.tar.xz; do curl -fsSLO "$base/$f"; done
+              calamares_$CALAMARES_VERSION.debian.tar.xz; do
+         curl -fsSLO "$pool/$f" || curl -fsSLO "$lp/$f"
+     done
      dpkg-source -x calamares_$CALAMARES_VERSION.dsc calamares >/dev/null)
     cp -a build/calamares-src/calamares src/calamares-ubuntu
     (cd src/calamares-ubuntu

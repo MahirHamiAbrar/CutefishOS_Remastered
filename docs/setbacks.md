@@ -207,3 +207,9 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** While wiring the new window-corner setting, `loadedEffects` in the VM had no `cutefish_roundedwindow`, although `/etc/xdg/kwinrc` enables it. `cutefish-kwin-plugins` shipped only the decoration.
 - **Cause:** `plugins/CMakeLists.txt` looked KWin up with `find_package(KWin QUIET)` and skipped the effect with a warning when that failed. It always failed: `KWinConfig.cmake` also needs `Libdrm`, and neither `kwin-dev` nor our build dependencies pulled in `libdrm-dev`. So third-party windows (Firefox, GTK apps) were never rounded.
 - **Fix:** `libdrm-dev` is in `Build-Depends`, and KWin is `REQUIRED`, so a missing dependency now fails the build instead of dropping the effect (`patches/kwin-plugins/0003`).
+- **Then:** With the effect finally compiled, it failed on `opengl/openglcontext.h`: KWin 6.6 folded `OpenGlContext` into `EglContext` (`opengl/eglcontext.h`, same `isOpenGLES()`/`glslVersion()`) (`patches/kwin-plugins/0004`).
+
+## 34. The Calamares fork failed to link a test
+- **Symptom:** The first build of `src/calamares-ubuntu` stopped at `test_automount`: `libboost_python314.so: undefined reference to 'PyObject_DelAttr'`.
+- **Cause:** The test links boost_python without libpython. Ubuntu's `debian/rules` already skips running the tests (`override_dh_auto_test:` is empty) but still builds them.
+- **Fix:** `scripts/fetch.sh` adds `-DBUILD_TESTING=OFF` to the configure line in `debian/rules`; the installer itself was never affected.

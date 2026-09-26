@@ -28,7 +28,9 @@ mkdir -p "$WORK" "$IMAGE"/{casper,boot/grub,EFI/boot,.disk,pool}
 
 # Firefox comes from Mozilla: Ubuntu's "firefox" is a snap wrapper with a
 # higher (epoch 1) version, so the pin must exist before apt resolves anything.
-setup_hook='mkdir -p "$1/etc/apt/preferences.d" && cp /ws/packaging/files/apt/mozilla.pref "$1/etc/apt/preferences.d/mozilla"'
+# Our KWin and Calamares forks must win over newer Ubuntu revisions.
+setup_hook='mkdir -p "$1/etc/apt/preferences.d" && cp /ws/packaging/files/apt/mozilla.pref "$1/etc/apt/preferences.d/mozilla" &&
+    cp /ws/packaging/files/apt/cutefish-forks.pref "$1/etc/apt/preferences.d/cutefish-forks"'
 
 echo ">>> bootstrapping root filesystem"
 mmdebstrap --mode=root --variant=minbase \
@@ -46,6 +48,11 @@ cutefish-desktop,cutefish-hardware,cutefish-privacy,cutefish-live,calamares-sett
     "deb [signed-by=/ws/packaging/files/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main" \
     2>&1 | tee /ws/build/logs/iso-mmdebstrap.log | grep -E '^(I|E|W):' | grep -vE 'W: (Download|Target)' || true
 [[ -x $ROOT/usr/bin/cutefish-session ]] || { echo "bootstrap failed, see build/logs/iso-mmdebstrap.log" >&2; exit 1; }
+rm "$ROOT/etc/apt/preferences.d/cutefish-forks"
+for pkg in calamares kwin-wayland; do
+    v=$(chroot "$ROOT" dpkg-query -W -f '${Version}' $pkg)
+    [[ $v == *+cutefish* ]] || { echo "$pkg $v is Ubuntu's, not our fork" >&2; exit 1; }
+done
 
 echo ">>> configuring the live system"
 # Final APT sources: Ubuntu in deb822 form; Mozilla's come from cutefish-desktop.
