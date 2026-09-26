@@ -13,3 +13,5 @@
 | `/tmp/osui.sock` could be taken over by another local user | OpenSnitch's default UI socket | Point `Server.Address` at a path only you can create, on shared machines |
 | Upstream `terminal` depends on unpublished framework and FishUI parts | Upstream work in progress | Our patch; drop it when upstream publishes |
 | Text editor is basic | The original was an unfinished prototype | Tabs, syntax highlighting, open/save, global menu only |
+| Settings shows the WLAN page on machines with no Wi-Fi card | Settings hides it only when NetworkManager's `WirelessHardwareEnabled` is false, which is the rfkill hardware switch, not device presence | The page is empty (a switch and "Add other…"). Needs a "has a Wi-Fi device" property in cutefish-framework's network module |
+| Installer finish page says "Cutefish OS OS Live environment" | Cosmetic, from Calamares' finished-page string and our branding names | None needed |

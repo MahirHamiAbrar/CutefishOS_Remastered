@@ -170,3 +170,9 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** With rsync in place, the install ran to job 41 of 42 and then failed: `Command calamares-logs-helper … finished with exit code 1`, `cp: cannot stat '/var/log/syslog'`.
 - **Cause:** Our `calamares-logs-helper` (ported from cutefishos-ubuntu) copies `/var/log/syslog` into the installed system's `/var/log/installer`. Ubuntu 26.04 without rsyslog only has the journal.
 - **Fix:** It saves `journalctl -b` as `/var/log/installer/syslog` instead (`packaging/calamares/calamares-logs-helper`, meta 26.04.5).
+
+## 28. An English install came up in Bengali
+- **Symptom:** After installing with "American English" as the system language and Calamares' geoip-picked Bengali (Bangladesh) number and date formats, the installed session was in Bengali: Settings, the shell, everything.
+- **Cause:** Calamares writes `LANG=en_US.UTF-8` and `LC_NUMERIC`/`LC_TIME`/… `=bn_BD` to `/etc/default/locale` and enables both locales in `/etc/locale.gen`. On the first login, core's session (`initLanguage`), with no language saved yet, took the *last* entry of `/etc/locale.gen` as the language, forced `LANG`, `LANGUAGE` and all the `LC_*` it knows to it, and saved it as the user's choice.
+- **Fix:** Without a saved choice it takes the language from `LANG` (the installer's system language), and only falls back to `/etc/locale.gen`. It no longer overwrites `LC_*` values the system already sets, so the formats stay as chosen in the installer (`patches/core/0004`, core 0.8+remastered4). Checked on the installed VM: `LANG=en_US.UTF-8`, `LANGUAGE=en_US`, `LC_NUMERIC=bn_BD`, English UI with a Bengali clock.
+- **Note:** A user whose first login already saved the wrong language (`~/.config/cutefishos/language.conf`) keeps it until they pick another in Settings → Language.

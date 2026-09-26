@@ -91,3 +91,14 @@ These ran in the Ubuntu 26.04 build container, not in a booted system. The VM ro
 | 11 | fixed, then pass | The Bluetooth page loads with no errors. With no controller it showed the switch "on"; it now says "No adapter found" (settings 0.8+remastered5, setbacks §24) |
 | 2 | pass (Settings) | settings 0.8+remastered4 in the VM (no Wi-Fi card at first, then with `mac80211_hwsim`): no `TypeError`; Settings opens on the first page |
 | 7 | pass (listing) | Settings → Network Monitor lists the connections with app, host:port and protocol, allowed (green) and blocked (red), with totals |
+
+### 2026-09-26: fresh ISO, install, installed system (UEFI VM; kwin +cutefish2, settings remastered5, meta 26.04.4)
+
+| # | Result | Notes |
+|---|---|---|
+| 1 | UEFI: pass | Fresh ISO: every fix from the last two sessions is present without hand edits. `/etc/cutefish` is core's version file, `/etc/cutefish-firewall.nft` is loaded, there is one installer entry, and no systemd unit failed |
+| 2 | pass, one bug fixed | Session log clean except one error: `-qw: 1: Syntax error: Unterminated quoted string`. The installer's autostart entry used single quotes, so the installer never opened by itself (setbacks §25, meta 26.04.5) |
+| 13 | pass after 3 fixes | Calamares driven by keyboard (`build/vm/cal-drive.sh`: Alt+N, Tab/arrows/Space to pick "Erase disk", typed user, Alt+I). Fixed on the way: `rsync` missing (§26), no cracklib dictionary (§26), `/var/log/syslog` missing (§27); the fixes were applied by hand in the live system to finish the run, and are in meta 26.04.5. Result: GPT with a 300 MiB EFI partition and ext4 root; live packages (casper, calamares, cutefish-live) purged; `ubuntu-drivers install` ran; `/var/log/installer/{debug,syslog,casper.log,media-info}` saved. Firewall prompts appear for the installer's own lookups (geoip, connectivity check); denied, the welcome page says "not connected to the Internet" |
+| 14 | pass, one bug fixed | Boots from disk to SDDM (Cutefish theme), login with the chosen password. Session came up in Bengali although the language was English: fixed in core 0.8+remastered4 (§28). Then repeated: 2 clean log; 3 shell; 4 Settings frosted; 5 `test-spaces.sh` PASS (`VM_USER=testu VM_PASS=…`); 7 prompt for curl; 8 inbound drop logged; 9 NTFS (ntfs3) and exFAT mount and write through udisks |
+
+`vm.sh run`/`srun` and `test-spaces.sh` take the guest account from `VM_USER`/`VM_PASS` (default: the live user) for installed systems.
