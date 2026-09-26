@@ -24,7 +24,7 @@ Start with [../architecture.md](../architecture.md) for the whole system, and [.
 | [calamares-ubuntu.md](calamares-ubuntu.md) | Our Calamares: Ubuntu's source plus the locale patch | none |
 | [cutefish-calamares-settings.md](cutefish-calamares-settings.md) | Old upstream installer branding (superseded by `packaging/calamares`) | none |
 | [sddm-theme.md](sddm-theme.md) | Login screen | none |
-| [icons.md](icons.md) | `Cutefish` and `Cutefish-dark` icon themes (Colloid-based) | none |
+| [icons.md](icons.md) | `Cutefish`, `Cutefish-Light` and `Cutefish-Dark` icon themes (Colloid-based) | none |
 | [gtk-themes.md](gtk-themes.md) | GTK 2/3/4 themes matching FishUI | none |
 | [cursor-themes.md](cursor-themes.md) | Cursor theme | none |
 | [plymouth-theme.md](plymouth-theme.md) | Boot splash | none |
