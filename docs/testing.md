@@ -102,3 +102,13 @@ These ran in the Ubuntu 26.04 build container, not in a booted system. The VM ro
 | 14 | pass, one bug fixed | Boots from disk to SDDM (Cutefish theme), login with the chosen password. Session came up in Bengali although the language was English: fixed in core 0.8+remastered4 (§28). Then repeated: 2 clean log; 3 shell; 4 Settings frosted; 5 `test-spaces.sh` PASS (`VM_USER=testu VM_PASS=…`); 7 prompt for curl; 8 inbound drop logged; 9 NTFS (ntfs3) and exFAT mount and write through udisks |
 
 `vm.sh run`/`srun` and `test-spaces.sh` take the guest account from `VM_USER`/`VM_PASS` (default: the live user) for installed systems.
+
+### 2026-09-26: BIOS (new VM `cutefish-bios`, ISO with core remastered4, meta 26.04.6)
+
+| # | Result | Notes |
+|---|---|---|
+| 1 | BIOS: fixed, then pass | The first BIOS boot stuck at the GRUB menu (setbacks §29). After the fix: GRUB counts down, Plymouth, the live session logs in by itself |
+| 13 | pass | The installer now opens by itself at login (§25) and gets through the firewall (the `cutefish-live-installer` rule; the geoip lookup works). The welcome page still said "not connected" until the check URL was changed (§30, meta 26.04.7; checked by hand in the live system). Erase-disk install with `grub-install --target=i386-pc`, 41 jobs, no errors, nothing fixed by hand; `ubuntu-drivers install` ran |
+| 14 | pass | Boots from disk, login works. `LANG=en_US.UTF-8` with `LC_TIME=bn_BD` (English UI, Bengali clock, §28); no failed units; opensnitch and the firewall active; the live installer rule and live packages are gone |
+
+**Not yet in an ISO:** meta 26.04.7 (the Internet check URL). It's built; the next `build-iso.sh` picks it up.
