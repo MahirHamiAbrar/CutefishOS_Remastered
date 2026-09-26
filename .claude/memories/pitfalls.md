@@ -40,3 +40,9 @@
 ## Boot
 - BIOS El Torito uses `grub-mkstandalone`, whose config is in a memdisk. It must `search --file /.disk/info` and then `configfile` the real one (§29). UEFI uses Ubuntu's signed GRUB, which finds the medium itself.
 - `loginctl terminate-user` on the live VM wedged the guest.
+
+## Builder image tools (session 6)
+- Modal's image has its own Python 3.12 in `/usr/local/bin`, first in `PATH`. It got picked by CMake (Calamares linked libpython3.12 next to Ubuntu's boost_python 3.14) and by `env python3` scripts (`dh_qmldeps`: "No module named 'debian'"). `build-in-container.sh` now sets a system-only `PATH`; our `dpkg-deb` wrapper lives in `/opt/cutefish-build/bin`.
+- A `find_package(... QUIET)` that skips a component produces a package that installs fine and lacks the feature. Use REQUIRED, and add the key file to `must` in `build-in-container.sh`.
+- KWin's internal C++ API (effects) changes between releases: 6.6 folded `OpenGlContext` into `EglContext`. Rebuild kwin-plugins with every KWin bump.
+- In the VM, `pkill -f <pattern>` inside `guestcontrol run /bin/sh -c '…'` kills that shell too when the pattern is in its command line. Use `pkill -x <name>`; Firefox's process is `firefox-bin`.

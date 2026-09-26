@@ -1,5 +1,20 @@
 # Next steps (priority order)
 
+## Immediately next (session 6 left off here)
+1. Build the ISO with the session-6 packages: stop the VM, start Docker, `scripts/build-iso.sh`. Then:
+   - check `build/logs/iso-skel.log` (oh-my-fish, LazyVim seeding);
+   - commit `build/lazy-lock.json` to `packaging/files/skel/nvim/lazy-lock.json`.
+2. Boot the ISO (EFI VM). Verify, in this order:
+   - Terminal opens, and its Settings dialog opens;
+   - sidebars look frosted; the transparency slider and window corners work live;
+   - the Blur & Transparency, Region & Language and Date & Time pages load with no QML warnings;
+   - `fc-match sans-serif` is Inter and `fc-match monospace` is JetBrains Mono;
+   - fish with neolambda; LazyVim offline.
+3. Install with `build/vm/cal-drive.sh`. Check that the time zone doesn't change the language or formats, and that `/etc/default/locale` is `en_US.UTF-8`.
+4. Rerun the global-menu check with Calculator.
+5. Fix the cursor-theme install path (`src/cursor-themes/debian/install` → `/usr/share/icons/`), see `docs/dev/cursor-themes.md`. Ask the user first; it wasn't requested.
+6. Update `docs/testing.md` with the results.
+
 ## If you're running inside Cutefish OS (the user's next plan)
 You are probably an agent started inside the installed or live Cutefish OS, on real hardware or in a VM.
 - `scripts/vm.sh`, Docker and Modal probably don't apply there. You *are* the system under test, so run checks directly (`journalctl --user -b -p warning`, `nmcli`, `bluetoothctl`, `upower -d`, `kscreen-doctor -o`, …).

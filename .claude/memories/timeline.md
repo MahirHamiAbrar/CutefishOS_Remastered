@@ -67,3 +67,17 @@ The project started on 2026-09-25; everything below happened on 2026-09-25/26. S
 - The final ISO was built and booted in BIOS; the installer opened by itself with `hasInternet : true`.
 - `vm.sh` gained `VM_USER`/`VM_PASS`. VBoxHeadless logs are now gitignored.
 - The user plans to boot the OS and run a Claude agent inside it next.
+
+## Session 6 (local, 2026-09-27): Terminal/Calculator, transparency, corners, fonts, shell, installer locale, dev docs
+- The user's VM test found Terminal and Calculator never opened (§31), sidebars too opaque, no transparency control.
+- Fixed Calculator; extended FishUI with what upstream Terminal expects (user's choice: extend FishUI, not patch Terminal).
+- Stale QML caches because Modal presets SOURCE_DATE_EPOCH (§32); the builder now stamps each deb with its changelog date.
+- Added window opacity and corner radius settings end to end (core → framework → FishUI → Settings; KWin decoration and effect read theme.conf).
+- New Settings pages: Blur & Transparency, Region & Language (formats, keyboard layouts), manual date/time, time-zone search.
+- Fonts Inter / JetBrains Mono / Fantasque Sans Mono; fish + oh-my-fish (neolambda) and Neovim + LazyVim seeded into /etc/skel at ISO build.
+- Calamares fork (Ubuntu source + patch): the time zone no longer picks language or formats.
+- The rounded-corners effect had never been built (§33): libdrm missing behind a QUIET find_package; then KWin 6.6 folded OpenGlContext into EglContext.
+- The Calamares fork linked Modal's Python 3.12 (§34); builds now get a system-only PATH.
+- Verified rounded corners live in the VM.
+- Wrote developer guides for all 21 repositories (`docs/dev/`) and an API generator.
+

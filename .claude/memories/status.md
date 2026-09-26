@@ -1,4 +1,39 @@
-# Status (2026-09-26, end of session 5)
+# Status (2026-09-27, session 6)
+
+`main` is at `2aebecf` or later on GitHub. The working tree is clean.
+
+## Session 6 (2026-09-27): built, not yet in an ISO
+Built on Modal and in `build/repo`; the last ISO (session 5) still has the older versions.
+
+| Package | Version | What's new |
+|---|---|---|
+| fishui | 0.8+remastered4 | Controls Terminal needs, `windowOpacity`/`windowRadius`, unversioned imports |
+| cutefish-core | 0.8+remastered6 | Appearance `windowOpacity` (0.4–1, default 0.7) and `windowRadius` (0–24, default 14); Inter/JetBrains Mono; `formats` in language.conf |
+| libcutefish | 0.7+remastered2 | Appearance `windowOpacity`/`windowRadius` |
+| cutefish-settings | 0.8+remastered7 | Blur & Transparency page, Window corners, Region & Language, manual date/time, time-zone search |
+| cutefish-kwin-plugins | 0.8+remastered5 | Rounded-corners effect actually built (§33), follows the radius live; KDecoration3 and KWin REQUIRED |
+| calamares (fork) | 3.3.14-0ubuntu25+cutefish1 | Time zone no longer picks the language/formats; builds against the system Python (§34) |
+| cutefish-terminal | 0.7+remastered2 | Fantasque Sans Mono |
+| cutefish-calculator | 0.6+remastered2 | Opens again (§31) |
+| meta | 26.04.8 | Fonts, fish + oh-my-fish/neolambda, Neovim + LazyVim seed, depends on the Calamares fork |
+
+Verified in the `cutefish-efi` VM (packages installed by hand, not from an ISO):
+- Calculator opens.
+- `cutefish_roundedwindow` is loaded; window corners change live at radius 24, 0 and 14, for FishUI windows (Files, Network Monitor prompt) and for a server-side-decorated Firefox (decoration top corners + effect bottom corners).
+
+Not yet verified: Terminal and its Settings dialog after the FishUI fixes; the sidebars' look; the Blur, Region & Language and Date & Time pages; fonts (`fc-match`); fish/LazyVim; the installer's locale behaviour. All of that needs the new ISO (plan §9).
+
+Builder guards added this session:
+- a package must contain its key files (`must` in `scripts/build-in-container.sh`);
+- builds get a system-only PATH (Modal's Python 3.12 broke Calamares and `dh_qmldeps`);
+- the ISO bootstrap pins `*+cutefish*` and fails if `calamares` or `kwin-wayland` isn't ours;
+- Calamares' source falls back to Launchpad.
+
+Developer guides for every repository under `src/` are in `docs/dev/` (+ generated API reference, `scripts/gen-dev-api.py`).
+
+New known issue: the Cutefish cursor themes install to `/usr/share/themes`, where nothing looks for cursors (confirmed in the VM).
+
+# Earlier status (2026-09-26, end of session 5)
 
 `main` is at `5ae013c` or later on GitHub (`origin`). The working tree is clean.
 
