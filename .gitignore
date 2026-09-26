@@ -3,3 +3,7 @@ build/
 .venv/
 # VirtualBox startup logs (written to VBoxSVC's working directory)
 *-VBoxHeadless-*.log
+
+# Claude Code runtime state
+.claude/scheduled_tasks.lock
+scheduled_tasks.lock
