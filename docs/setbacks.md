@@ -165,3 +165,8 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** Calamares stopped right after partitioning: `Failed to unpack image "/cdrom/casper/filesystem.squashfs"`, details `rsync failed with error code 127`.
 - **Cause:** Calamares' `unpackfs` module copies the live system with `rsync`, but Ubuntu's `calamares` package doesn't depend on it, and nothing else in our ISO pulled it in (Ubuntu's flavours get it from their seeds).
 - **Fix:** `calamares-settings-cutefish` depends on `rsync` (meta 26.04.5). Also: the users page said "The password fails the dictionary check - error loading dictionary" for every password, because libpwquality's dictionary comes from `cracklib-runtime`; that is a dependency now too.
+
+## 27. The install "failed" at its last step: no /var/log/syslog
+- **Symptom:** With rsync in place, the install ran to job 41 of 42 and then failed: `Command calamares-logs-helper … finished with exit code 1`, `cp: cannot stat '/var/log/syslog'`.
+- **Cause:** Our `calamares-logs-helper` (ported from cutefishos-ubuntu) copies `/var/log/syslog` into the installed system's `/var/log/installer`. Ubuntu 26.04 without rsyslog only has the journal.
+- **Fix:** It saves `journalctl -b` as `/var/log/installer/syslog` instead (`packaging/calamares/calamares-logs-helper`, meta 26.04.5).

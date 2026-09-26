@@ -10,6 +10,9 @@ cutefish-meta (26.04.5) resolute; urgency=medium
   * calamares-settings-cutefish: depend on rsync. Calamares' unpackfs copies
     the live system with it and calamares doesn't depend on it, so every
     install failed with "rsync failed with error code 127".
+  * calamares-logs-helper: save the journal as the installer's syslog. There
+    is no /var/log/syslog, and the failed cp ended every install with
+    "External command finished with errors".
 
  -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 19:03:41 +0600
 

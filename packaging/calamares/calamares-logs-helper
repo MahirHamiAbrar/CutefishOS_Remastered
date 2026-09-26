@@ -10,7 +10,8 @@ cp $HOME/.cache/calamares/session.log $install_dir/debug
 
 cp /cdrom/.disk/info $install_dir/media-info
 cp /var/log/casper.log $install_dir/casper.log
-cp /var/log/syslog $install_dir/syslog
+# There is no /var/log/syslog (no rsyslog, only the journal).
+journalctl -b --no-pager > $install_dir/syslog
 
 gzip --stdout $root/var/lib/dpkg/status > $install_dir/initial-status.gz
 
