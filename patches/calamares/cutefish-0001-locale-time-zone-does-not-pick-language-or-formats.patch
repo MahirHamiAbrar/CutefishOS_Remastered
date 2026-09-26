@@ -1,0 +1,39 @@
+From 6945a9e8d67c9d20f3f66961d94667ddfc3743f6 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:12:10 +0600
+Subject: [PATCH] locale: the time zone no longer picks the language or the
+ formats
+
+The formats followed the selected zone's country, so an English install
+in Asia/Dhaka got bn_BD numbers and dates. They now follow the selected
+language until the user changes them on the page.
+---
+ src/modules/locale/Config.cpp | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/modules/locale/Config.cpp b/src/modules/locale/Config.cpp
+index 3e27a52..17829eb 100644
+--- a/src/modules/locale/Config.cpp
++++ b/src/modules/locale/Config.cpp
+@@ -326,7 +326,17 @@ Config::automaticLocaleConfiguration() const
+     {
+         lang = QLocale().name();
+     }
+-    return LocaleConfiguration::fromLanguageAndLocation( lang, supportedLocales(), currentLocation()->country() );
++    // Cutefish: the time zone only says what the clock shows. The language
++    // and the formats (numbers, dates, currency) follow the language the
++    // user picked, and change only when they pick them on this page; so
++    // the country used here is the language's own (en_US -> US), never the
++    // time zone's (Asia/Dhaka used to turn English into bn_BD formats).
++    QString country = lang.section( '.', 0, 0 ).section( '@', 0, 0 ).section( '_', 1, 1 );
++    if ( country.isEmpty() )
++    {
++        country = QLocale( lang.section( '.', 0, 0 ) ).name().section( '_', 1, 1 );
++    }
++    return LocaleConfiguration::fromLanguageAndLocation( lang, supportedLocales(), country );
+ }
+ 
+ LocaleConfiguration
+-- 
+2.43.0
+

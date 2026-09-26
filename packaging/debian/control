@@ -85,7 +85,7 @@ Description: Privacy defaults for Cutefish
 
 Package: calamares-settings-cutefish
 Architecture: all
-Depends: ${misc:Depends}, calamares, calamares-settings-ubuntu-common,
+Depends: ${misc:Depends}, calamares (>= 3.3.14-0ubuntu25+cutefish1), calamares-settings-ubuntu-common,
 # The users page checks passwords with libpwquality, whose dictionary check
 # needs the cracklib dictionary ("error loading dictionary" without it).
          cracklib-runtime,

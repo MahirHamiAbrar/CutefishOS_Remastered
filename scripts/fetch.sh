@@ -71,3 +71,30 @@ if [[ ! -d src/kwin-ubuntu/debian ]]; then
      git add -A && git -c user.name=r -c user.email=r@l commit -qm "debian: register cutefish patches")
     echo "ok  kwin-ubuntu"
 fi
+
+# Calamares: Ubuntu's 26.04 source + our patches (patches/calamares), so the
+# installer's time zone no longer picks the language or the formats.
+CALAMARES_VERSION=3.3.14-0ubuntu25
+if [[ ! -d src/calamares-ubuntu/debian ]]; then
+    mkdir -p build/calamares-src
+    (cd build/calamares-src && rm -rf calamares calamares_*
+     base=http://archive.ubuntu.com/ubuntu/pool/universe/c/calamares
+     for f in calamares_$CALAMARES_VERSION.dsc calamares_${CALAMARES_VERSION%-*}.orig.tar.gz \
+              calamares_$CALAMARES_VERSION.debian.tar.xz; do curl -fsSLO "$base/$f"; done
+     dpkg-source -x calamares_$CALAMARES_VERSION.dsc calamares >/dev/null)
+    cp -a build/calamares-src/calamares src/calamares-ubuntu
+    (cd src/calamares-ubuntu
+     git init -q && git add -A && git -c user.name=r -c user.email=r@l commit -qm "ubuntu calamares $CALAMARES_VERSION"
+     git -c user.name=r -c user.email=r@l am -q ../../patches/calamares/*.patch
+     for p in ../../patches/calamares/*.patch; do
+         cp "$p" debian/patches/; n=$(basename "$p")
+         echo "$n" >> debian/patches/series; echo "$n" >> .pc/applied-patches
+     done
+     { echo "calamares ($CALAMARES_VERSION+cutefish1) resolute; urgency=medium"; echo
+       echo "  * locale: the time zone no longer picks the language or the formats;"
+       echo "    both follow the selected language until changed on the page."; echo
+       echo " -- Cutefish Remastered <remastered@localhost>  $(date -R)"; echo
+       cat debian/changelog; } > debian/changelog.new && mv debian/changelog.new debian/changelog
+     git add -A && git -c user.name=r -c user.email=r@l commit -qm "debian: register cutefish patches")
+    echo "ok  calamares-ubuntu"
+fi

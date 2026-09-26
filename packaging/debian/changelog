@@ -4,6 +4,8 @@ cutefish-meta (26.04.8) resolute; urgency=medium
     default fonts (fontconfig aliases in /etc/fonts/conf.d); fish as the
     default shell for new users; Neovim and the tools LazyVim needs.
   * calamares-settings-cutefish: the installed user gets /usr/bin/fish.
+    Needs our Calamares build, whose time zone no longer picks the language
+    or the formats (English stays en_US unless changed on the page).
 
  -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:08:35 +0600
 

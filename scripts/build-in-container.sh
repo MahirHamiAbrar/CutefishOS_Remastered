@@ -11,7 +11,7 @@ set -euo pipefail
 # KWin last: it takes hours in a small VM and only kwin-plugins needs it.
 ORDER="fishui cutefish-framework qt-plugins filemanager shell core settings terminal icons
 wallpapers sddm-theme screenshot calculator texteditor gtk-themes cursor-themes plymouth-theme
-netmonitor meta kwin kwin-plugins"
+netmonitor meta kwin kwin-plugins calamares"
 [[ $# -gt 0 ]] || set -- $ORDER
 
 mem_gb=$(awk '/MemTotal/ {print int($2 / 1024 / 1024)}' /proc/meminfo)
@@ -62,6 +62,7 @@ fail=()
 for p in "$@"; do
     case $p in
         kwin)       from=$WS/src/kwin-ubuntu ;;
+        calamares)  from=$WS/src/calamares-ubuntu ;;
         netmonitor) from=$WS/netmonitor ;;
         meta)       from=$WS/packaging ;;
         *)          from=$WS/src/$p ;;
