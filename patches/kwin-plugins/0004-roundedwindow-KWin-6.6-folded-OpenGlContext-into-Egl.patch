@@ -1,0 +1,50 @@
+From 400811ab4ef1b234230c72156cbc5ec0af7e8c3f Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:56:24 +0600
+Subject: [PATCH 4/4] roundedwindow: KWin 6.6 folded OpenGlContext into
+ EglContext
+
+---
+ debian/changelog                        | 6 ++++++
+ plugins/roundedwindow/roundedwindow.cpp | 4 ++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index dd84b3b..2743fbc 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-kwin-plugins (0.8+remastered4) resolute; urgency=medium
++
++  * roundedwindow: KWin 6.6 folded OpenGlContext into EglContext
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:56:24 +0600
++
+ cutefish-kwin-plugins (0.8+remastered3) resolute; urgency=medium
+ 
+   * Build the rounded-corners effect: libdrm-dev build dependency, KWin dev files required
+diff --git a/plugins/roundedwindow/roundedwindow.cpp b/plugins/roundedwindow/roundedwindow.cpp
+index 75344e7..76e5b11 100644
+--- a/plugins/roundedwindow/roundedwindow.cpp
++++ b/plugins/roundedwindow/roundedwindow.cpp
+@@ -6,7 +6,7 @@
+ #include <effect/effecthandler.h>
+ #include <opengl/glshader.h>
+ #include <opengl/glshadermanager.h>
+-#include <opengl/openglcontext.h>
++#include <opengl/eglcontext.h>
+ #include <utils/version.h>
+ 
+ #include <QSettings>
+@@ -36,7 +36,7 @@ static const QStringList s_allowList = {
+ 
+ static QByteArray fragmentShaderSource()
+ {
+-    const KWin::OpenGlContext *context = KWin::effects->openglContext();
++    const KWin::EglContext *context = KWin::effects->openglContext();
+     const bool gles = context && context->isOpenGLES();
+     const KWin::Version glslVersion = context ? context->glslVersion() : KWin::Version(1, 40);
+ 
+-- 
+2.43.0
+

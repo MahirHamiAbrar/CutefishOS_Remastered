@@ -86,6 +86,9 @@ if [[ ! -d src/calamares-ubuntu/debian ]]; then
     (cd src/calamares-ubuntu
      git init -q && git add -A && git -c user.name=r -c user.email=r@l commit -qm "ubuntu calamares $CALAMARES_VERSION"
      git -c user.name=r -c user.email=r@l am -q ../../patches/calamares/*.patch
+     # A test links boost_python without libpython and breaks the build;
+     # Ubuntu skips the tests anyway.
+     sed -i 's|-DBoost_PYTHON_VERSION=3.14$|& -DBUILD_TESTING=OFF|' debian/rules
      for p in ../../patches/calamares/*.patch; do
          cp "$p" debian/patches/; n=$(basename "$p")
          echo "$n" >> debian/patches/series; echo "$n" >> .pc/applied-patches
