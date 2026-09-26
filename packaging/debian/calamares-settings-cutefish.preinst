@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+# Calamares' own "Install System" entry duplicates our "Install Cutefish OS"
+# (cutefish-calamares.desktop), so move it out of the application menu.
+if [ "$1" = install ] || [ "$1" = upgrade ]; then
+    dpkg-divert --package calamares-settings-cutefish --rename \
+        --divert /usr/share/calamares/calamares.desktop.upstream \
+        --add /usr/share/applications/calamares.desktop
+fi
+#DEBHELPER#
