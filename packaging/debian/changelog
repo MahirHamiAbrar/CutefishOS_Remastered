@@ -1,3 +1,12 @@
+cutefish-meta (26.04.6) resolute; urgency=medium
+
+  * cutefish-live: OpenSnitch rule allowing the installer and the programs it
+    runs in the new system, so its geoip and connectivity checks and the
+    online ubuntu-drivers step don't wait on prompts. Purged with
+    cutefish-live after the install.
+
+ -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 19:42:50 +0600
+
 cutefish-meta (26.04.5) resolute; urgency=medium
 
   * cutefish-live: quote the installer autostart Exec with double quotes.
