@@ -160,3 +160,8 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** The live session log had `-qw: 1: Syntax error: Unterminated quoted string`, and Calamares didn't open at login (test-plan row 13 says it should).
 - **Cause:** `/etc/xdg/autostart/cutefish-live-installer.desktop` had `Exec=sh -c 'grep -qw boot=casper /proc/cmdline && exec …'`. Desktop entries only quote with double quotes, and Cutefish's session splits `Exec` with `QProcess::splitCommand`, which also only knows double quotes. So it ran `sh -c "'grep"` with `-qw` as `$0`.
 - **Fix:** Double quotes (`packaging/files/live/cutefish-live-installer.desktop`, meta 26.04.5). The same command started from the session opens the installer.
+
+## 26. Every install failed: "rsync failed with error code 127"
+- **Symptom:** Calamares stopped right after partitioning: `Failed to unpack image "/cdrom/casper/filesystem.squashfs"`, details `rsync failed with error code 127`.
+- **Cause:** Calamares' `unpackfs` module copies the live system with `rsync`, but Ubuntu's `calamares` package doesn't depend on it, and nothing else in our ISO pulled it in (Ubuntu's flavours get it from their seeds).
+- **Fix:** `calamares-settings-cutefish` depends on `rsync` (meta 26.04.5). Also: the users page said "The password fails the dictionary check - error loading dictionary" for every password, because libpwquality's dictionary comes from `cracklib-runtime`; that is a dependency now too.

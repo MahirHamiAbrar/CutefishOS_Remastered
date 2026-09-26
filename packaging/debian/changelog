@@ -4,6 +4,12 @@ cutefish-meta (26.04.5) resolute; urgency=medium
     Single quotes are not quoting in desktop entries (or QProcess::
     splitCommand), so the session ran sh -c "'grep" and the installer never
     opened by itself.
+  * calamares-settings-cutefish: depend on cracklib-runtime; without its
+    dictionary the users page said "The password fails the dictionary check -
+    error loading dictionary" for every password.
+  * calamares-settings-cutefish: depend on rsync. Calamares' unpackfs copies
+    the live system with it and calamares doesn't depend on it, so every
+    install failed with "rsync failed with error code 127".
 
  -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 19:03:41 +0600
 
