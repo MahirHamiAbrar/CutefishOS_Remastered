@@ -81,3 +81,13 @@ These ran in the Ubuntu 26.04 build container, not in a booted system. The VM ro
 
 **Rebuild before the next ISO:** core 0.8+remastered3, meta 26.04.3, netmonitor 0.2, screenshot 0.8+remastered2, shell 0.8+remastered3 (from the previous session) and settings 0.8+remastered4 (this one).
 
+
+### 2026-09-26: VM checks of rows 4, 8 and 11 (UEFI VM, packages upgraded in place)
+
+| # | Result | Notes |
+|---|---|---|
+| 4 | fixed, then pass | Firefox in the blur list turned 90 % opaque but the windows behind it stayed sharp; fixed in kwin `+cutefish2` (setbacks §23). After the fix, a GTK test window at 60 % opacity shows Firefox behind it frosted, and Firefox shows Settings behind it blurred. The list was written the way Settings writes it (kwinrc `ForceBlurClasses` + `kwinrulesrc` rule, then `reconfigure` and `reconfigureEffect blur`); the harness can't click through the Settings UI |
+| 8 | pass | NAT port forward host `127.0.0.1:18080` → guest `8080`. The guest dropped the SYN and logged `cutefish-in: IN=enp0s3 … SRC=10.0.2.2 DST=10.0.2.15 … PROTO=TCP … DPT=8080 … SYN`. The live user (in `adm`) reads it with the same `journalctl -k --grep=cutefish-in:` call as Settings. (The host side "connects" because VirtualBox's NAT accepts it before trying the guest) |
+| 11 | fixed, then pass | The Bluetooth page loads with no errors. With no controller it showed the switch "on"; it now says "No adapter found" (settings 0.8+remastered5, setbacks §24) |
+| 2 | pass (Settings) | settings 0.8+remastered4 in the VM (no Wi-Fi card at first, then with `mac80211_hwsim`): no `TypeError`; Settings opens on the first page |
+| 7 | pass (listing) | Settings → Network Monitor lists the connections with app, host:port and protocol, allowed (green) and blocked (red), with totals |
