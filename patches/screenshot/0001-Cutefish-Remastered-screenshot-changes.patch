@@ -1,7 +1,7 @@
 From 12f4fbf3fc64bc970c5a14138b9cebd2a0e727dc Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Fri, 25 Sep 2026 22:14:32 +0600
-Subject: [PATCH] Cutefish Remastered: screenshot changes
+Subject: [PATCH 1/2] Cutefish Remastered: screenshot changes
 
 - Port to Qt 6 and Wayland (KWin ScreenShot2)
 ---
