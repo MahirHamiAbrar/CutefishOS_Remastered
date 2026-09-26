@@ -37,7 +37,13 @@ apt-get update -qq 2>/dev/null
 # mtimes.
 echo "builder SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-unset} (unset for the build)"
 unset SOURCE_DATE_EPOCH
-cat > /usr/local/bin/dpkg-deb <<'EOF'
+# The builder image may carry tools of its own in /usr/local/bin: Modal's has
+# Python 3.12 there, first in PATH, which broke every build step started with
+# "env python3" (dh_qmldeps) and linked Calamares against the wrong libpython
+# (setback 34). Builds see only the system's tools, plus our dpkg-deb wrapper.
+mkdir -p /opt/cutefish-build/bin
+export PATH=/opt/cutefish-build/bin:/usr/sbin:/usr/bin:/sbin:/bin
+cat > /opt/cutefish-build/bin/dpkg-deb <<'EOF'
 #!/bin/sh
 if [ -n "$SOURCE_DATE_EPOCH" ]; then
     for arg in "$@"; do
@@ -46,7 +52,7 @@ if [ -n "$SOURCE_DATE_EPOCH" ]; then
 fi
 exec /usr/bin/dpkg-deb "$@"
 EOF
-chmod +x /usr/local/bin/dpkg-deb
+chmod +x /opt/cutefish-build/bin/dpkg-deb
 
 # Copy a source tree into the volume, keeping its build tree (obj-*).
 sync_tree() {
