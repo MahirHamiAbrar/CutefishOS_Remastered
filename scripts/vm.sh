@@ -9,6 +9,8 @@
 #   scripts/vm.sh shot   [efi|bios] NAME   save screenshots of both displays to build/vm/shots/
 #   scripts/vm.sh type   [efi|bios] TEXT   type TEXT into the VM
 #   scripts/vm.sh run    [efi|bios] CMD... run a command in the guest as the live user (guest additions)
+#   scripts/vm.sh srun   [efi|bios] SHELL-CMD  same, but inside the graphical session (polkit sees an
+#                                     active session, so udisks/NetworkManager actions are allowed)
 #   scripts/vm.sh displays [efi|bios] N [WxH]  turn on N displays side by side (default 2, 1280x800)
 #   scripts/vm.sh stop   [efi|bios]
 #   scripts/vm.sh destroy [efi|bios]
@@ -83,6 +85,16 @@ displays)
     ;;
 type)    VBoxManage controlvm "$VM" keyboardputstring "$*" ;;
 run)     VBoxManage guestcontrol "$VM" run --username cutefish --password "" --wait-stdout --wait-stderr -- "$@" ;;
+srun)
+    # guestcontrol processes aren't in the logind session, so polkit treats them
+    # as inactive. Cutefish's AppRuntime starts the command from the session.
+    VBoxManage guestcontrol "$VM" run --username cutefish --password "" --wait-stdout --wait-stderr -- /bin/sh -c '
+        export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
+        rm -f /tmp/srun.out /tmp/srun.rc
+        busctl --user -- call com.cutefish.AppRuntime /AppRuntime com.cutefish.AppRuntime launchCommand sass \
+            vm-srun 3 /bin/sh -c "{ $1 ; } >/tmp/srun.out 2>&1; echo \$? >/tmp/srun.rc" /tmp >/dev/null
+        for _ in $(seq 1 240); do [ -e /tmp/srun.rc ] && break; sleep 0.5; done
+        cat /tmp/srun.out; exit "$(cat /tmp/srun.rc 2>/dev/null || echo 124)"' srun "$*" ;;
 stop)    VBoxManage controlvm "$VM" poweroff || true ;;
 destroy)
     VBoxManage controlvm "$VM" poweroff 2>/dev/null || true
