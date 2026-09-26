@@ -16,7 +16,7 @@ Depends: ${misc:Depends},
          cutefish-cursor-themes, cutefish-sddm-theme, cutefish-plymouth-theme,
          fishui, libcutefish,
 # Compositor: our KWin build (per-display Spaces, per-app blur)
-         kwin-wayland (>= 4:6.6.6-0ubuntu0.1+cutefish1), libkscreenlocker6, xwayland,
+         kwin-wayland (>= 4:6.6.6-0ubuntu0.1+cutefish2), libkscreenlocker6, xwayland,
 # Lock screen (our kscreenlocker theme, org.cutefish.desktop)
          qml6-module-qtquick-effects, qml6-module-qtquick-controls, qml6-module-qtquick-layouts,
          sddm, qt6-wayland, layer-shell-qt, xdg-desktop-portal-kde, xdg-desktop-portal-gtk, polkit-kde-agent-1,

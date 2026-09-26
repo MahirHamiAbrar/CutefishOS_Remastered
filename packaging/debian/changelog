@@ -1,3 +1,10 @@
+cutefish-meta (26.04.4) resolute; urgency=medium
+
+  * cutefish-desktop: require kwin-wayland +cutefish2 (full blur strength
+    behind force-blurred windows).
+
+ -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 18:23:47 +0600
+
 cutefish-meta (26.04.3) resolute; urgency=medium
 
   * cutefish-hardware: drop cutefish-vbox-drmclient.service; VBoxService
