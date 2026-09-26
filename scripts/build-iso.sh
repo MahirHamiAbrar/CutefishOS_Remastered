@@ -126,7 +126,6 @@ menuentry "Cutefish OS (safe graphics)" {
     linux /casper/vmlinuz boot=casper nomodeset quiet splash ---
     initrd /casper/initrd
 }
-grub_platform
 if [ "$grub_platform" = "efi" ]; then
 menuentry "UEFI Firmware Settings" {
     fwsetup
@@ -146,11 +145,17 @@ mkfs.vfat -n EFI "$EFI_IMG" >/dev/null
 mmd -i "$EFI_IMG" ::/EFI ::/EFI/boot
 mcopy -i "$EFI_IMG" "$IMAGE"/EFI/boot/*.efi ::/EFI/boot/
 
-# BIOS: GRUB El Torito image with the same grub.cfg.
+# BIOS: GRUB El Torito image. Its embedded config lives in a memdisk, so it
+# first finds the ISO (by /.disk/info) and then reads the same grub.cfg.
+cat > "$WORK/grub-bios.cfg" <<'EOF'
+search --no-floppy --set=root --file /.disk/info
+set prefix=($root)/boot/grub
+configfile /boot/grub/grub.cfg
+EOF
 grub-mkstandalone --format=i386-pc --output="$WORK/core.img" \
-    --install-modules="linux normal iso9660 biosdisk memdisk search tar ls all_video font gfxterm" \
-    --modules="linux normal iso9660 biosdisk search" --locales="" --fonts="" \
-    "boot/grub/grub.cfg=$IMAGE/boot/grub/grub.cfg"
+    --install-modules="linux normal iso9660 biosdisk memdisk search search_fs_file configfile test tar ls all_video font gfxterm" \
+    --modules="linux normal iso9660 biosdisk search search_fs_file configfile test" --locales="" --fonts="" \
+    "boot/grub/grub.cfg=$WORK/grub-bios.cfg"
 cat /usr/lib/grub/i386-pc/cdboot.img "$WORK/core.img" > "$IMAGE/boot/grub/bios.img"
 
 echo ">>> ISO"
