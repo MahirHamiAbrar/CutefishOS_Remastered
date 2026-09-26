@@ -1,7 +1,7 @@
 cutefish-meta (26.04.2) resolute; urgency=medium
 
-  * cutefish-hardware: start VBoxDRMClient in VirtualBox guests, so extra
-    virtual monitors connect under Wayland (virtualbox-guest-x11).
+  * cutefish-hardware: depend on virtualbox-guest-x11, so VirtualBox guests
+    get VBoxDRMClient and extra virtual monitors connect under Wayland.
 
  -- Cutefish Remastered <remastered@localhost>  Fri, 25 Sep 2026 19:48:11 +0000
 

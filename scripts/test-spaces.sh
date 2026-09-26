@@ -55,7 +55,7 @@ space() {  # space id|name: of the first Space
 
 id=$(space id)
 name=$(space name)
-echo "PerOutputVirtualDesktops=$(kreadconfig6 --file kwinrc --group Windows --key PerOutputVirtualDesktops 2>/dev/null || echo '?')"
+echo "PerOutputVirtualDesktops: $(grep -h '^PerOutputVirtualDesktops=' ~/.config/kwinrc /etc/xdg/kwinrc 2>/dev/null | head -1)"
 
 busctl --user call $SCRIPTING unloadScript s cutefish-spaces-test >/dev/null
 script=$(busctl --user call $SCRIPTING loadScript ss /tmp/cutefish-spaces-test.js cutefish-spaces-test | cut -d' ' -f2)

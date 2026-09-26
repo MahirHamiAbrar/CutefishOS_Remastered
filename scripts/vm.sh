@@ -68,8 +68,8 @@ shot)
 displays)
     # The VM has two monitors, but the guest only sees the second one after the
     # host sends a layout for it. setvideomodehint does nothing under VMSVGA;
-    # setscreenlayout does, through VBoxDRMClient in the guest
-    # (cutefish-vbox-drmclient.service). See docs/setbacks.md.
+    # setscreenlayout does, through VBoxDRMClient in the guest (from
+    # virtualbox-guest-x11, started by VBoxService). See docs/setbacks.md.
     n=${1:-2} size=${2:-1280x800}
     w=${size%x*} h=${size#*x}
     layout=()
