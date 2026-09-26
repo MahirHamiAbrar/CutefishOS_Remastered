@@ -1,0 +1,54 @@
+From 876f4d4d67a6ef9aa80894c7c269fb1b4edc28bf Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 01:39:30 +0600
+Subject: [PATCH 2/2] Drop the Qt 5 WindowBlur block and fixed opacity;
+ FishUI.Window blurs by itself
+
+---
+ debian/changelog | 6 ++++++
+ qml/main.qml     | 8 --------
+ 2 files changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 4592117..5197350 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-calculator (0.6+remastered2) resolute; urgency=medium
++
++  * Drop the Qt 5 WindowBlur block and fixed opacity; FishUI.Window blurs by itself
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 01:39:29 +0600
++
+ cutefish-calculator (0.6+remastered1) resolute; urgency=medium
+ 
+   * Port to Qt 6.
+diff --git a/qml/main.qml b/qml/main.qml
+index 2dff258..af11e6a 100644
+--- a/qml/main.qml
++++ b/qml/main.qml
+@@ -15,7 +15,6 @@ FishUI.Window {
+ 
+     background.color: FishUI.Theme.darkMode ? Qt.rgba(46 / 255, 46 / 255, 46 / 255, 1.0)
+                                             : Qt.rgba(240 / 255, 238 / 255, 241 / 255, 1.0)
+-    background.opacity: rootWindow.compositing ? 0.95 : 1.0
+ 
+     MenuBar {
+         id: menuBar
+@@ -38,13 +37,6 @@ FishUI.Window {
+         iconSource: "image://icontheme/cutefish-calculator"
+     }
+ 
+-    FishUI.WindowBlur {
+-        view: rootWindow
+-        geometry: Qt.rect(rootWindow.x, rootWindow.y, rootWindow.width, rootWindow.height)
+-        windowRadius: rootWindow.background.radius
+-        enabled: true
+-    }
+-
+     CalcEngine {
+         id: calcEngine
+ 
+-- 
+2.43.0
+

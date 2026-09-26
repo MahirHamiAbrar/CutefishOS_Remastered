@@ -1,0 +1,282 @@
+From 1d7ad5468210611606b3f976b64981fec13b22b1 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 01:39:30 +0600
+Subject: [PATCH 2/2] Label, ScrollBar, Slider, Switch, RoundedRectangle;
+ Window.blurEnabled/headerDarkMode; RoundImageButton.iconName/iconColor;
+ ConfirmDialog.parentWindow/showOnCompleted/open() for Terminal
+
+---
+ debian/changelog                  |  6 ++++++
+ src/controls/ConfirmDialog.qml    | 10 ++++++++--
+ src/controls/Label.qml            |  8 ++++++++
+ src/controls/RoundImageButton.qml | 10 ++++++++++
+ src/controls/RoundedRectangle.qml |  6 ++++++
+ src/controls/ScrollBar.qml        | 29 +++++++++++++++++++++++++++++
+ src/controls/Slider.qml           |  5 +++++
+ src/controls/Switch.qml           |  5 +++++
+ src/controls/Window.qml           | 11 ++++++++---
+ src/controls/qmldir               |  5 +++++
+ src/fishui.cpp                    |  7 +++++++
+ src/fishui.qrc                    |  5 +++++
+ 12 files changed, 102 insertions(+), 5 deletions(-)
+ create mode 100644 src/controls/Label.qml
+ create mode 100644 src/controls/RoundedRectangle.qml
+ create mode 100644 src/controls/ScrollBar.qml
+ create mode 100644 src/controls/Slider.qml
+ create mode 100644 src/controls/Switch.qml
+
+diff --git a/debian/changelog b/debian/changelog
+index d323fa0..1599e9c 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++fishui (0.8+remastered2) resolute; urgency=medium
++
++  * Label, ScrollBar, Slider, Switch, RoundedRectangle; Window.blurEnabled/headerDarkMode; RoundImageButton.iconName/iconColor; ConfirmDialog.parentWindow/showOnCompleted/open() for Terminal
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 01:39:30 +0600
++
+ fishui (0.8+remastered1) resolute; urgency=medium
+ 
+   * Blur and translucency behind every FishUI window by default (macOS vibrancy)
+diff --git a/src/controls/ConfirmDialog.qml b/src/controls/ConfirmDialog.qml
+index 494fe41..4eb04aa 100644
+--- a/src/controls/ConfirmDialog.qml
++++ b/src/controls/ConfirmDialog.qml
+@@ -11,6 +11,10 @@ FishUI.Window {
+     property string confirmText: qsTr("Confirm")
+     property bool destructive: false
+     property bool confirmEnabled: true
++    //! The window this dialog belongs to (its transient parent).
++    property alias parentWindow: control.transientParent
++    //! Show as soon as the dialog is created; false to show it with open().
++    property bool showOnCompleted: true
+ 
+     signal accepted()
+     signal rejected()
+@@ -43,11 +47,13 @@ FishUI.Window {
+     property bool _accepted: false
+ 
+     // Let wrapped text and layout sizing settle before mapping the window.
+-    Component.onCompleted: Qt.callLater(function() {
++    Component.onCompleted: if (showOnCompleted) Qt.callLater(open)
++
++    function open() {
+         control.show()
+         control.raise()
+         control.requestActivate()
+-    })
++    }
+ 
+     DragHandler {
+         parent: control.contentItem
+diff --git a/src/controls/Label.qml b/src/controls/Label.qml
+new file mode 100644
+index 0000000..1581652
+--- /dev/null
++++ b/src/controls/Label.qml
+@@ -0,0 +1,8 @@
++import QtQuick
++import QtQuick.Controls as QQC2
++import FishUI 1.0 as FishUI
++
++// A label in the theme's text colour.
++QQC2.Label {
++    color: FishUI.Theme.textColor
++}
+diff --git a/src/controls/RoundImageButton.qml b/src/controls/RoundImageButton.qml
+index c752995..ed443fe 100644
+--- a/src/controls/RoundImageButton.qml
++++ b/src/controls/RoundImageButton.qml
+@@ -20,6 +20,7 @@
+ import QtQuick 2.12
+ import QtQuick.Window 2.3
+ import QtQuick.Controls 2.4
++import Qt5Compat.GraphicalEffects
+ import FishUI 1.0 as FishUI
+ 
+ Item {
+@@ -44,6 +45,9 @@ Item {
+     property color pressedColor: FishUI.Theme.darkMode ? Qt.lighter(FishUI.Theme.backgroundColor, 1.5)
+                                                        : Qt.darker(FishUI.Theme.backgroundColor, 1.2)
+     property alias source: _image.source
++    //! A theme icon instead of a source, tinted with iconColor.
++    property string iconName
++    property color iconColor: FishUI.Theme.textColor
+     property alias image: _image
+     signal clicked()
+ 
+@@ -76,5 +80,11 @@ Item {
+         sourceSize: Qt.size(width, height)
+         cache: true
+         asynchronous: false
++        source: control.iconName !== "" ? "image://icontheme/" + control.iconName : ""
++
++        layer.enabled: control.iconName !== ""
++        layer.effect: ColorOverlay {
++            color: control.iconColor
++        }
+     }
+ }
+diff --git a/src/controls/RoundedRectangle.qml b/src/controls/RoundedRectangle.qml
+new file mode 100644
+index 0000000..60eb755
+--- /dev/null
++++ b/src/controls/RoundedRectangle.qml
+@@ -0,0 +1,6 @@
++import QtQuick
++
++// A plain antialiased rounded rectangle, for cards and grouped rows.
++Rectangle {
++    antialiasing: true
++}
+diff --git a/src/controls/ScrollBar.qml b/src/controls/ScrollBar.qml
+new file mode 100644
+index 0000000..1ebf48f
+--- /dev/null
++++ b/src/controls/ScrollBar.qml
+@@ -0,0 +1,29 @@
++import QtQuick
++import QtQuick.Controls as QQC2
++import FishUI 1.0 as FishUI
++
++// An overlay scroll bar: a thin handle that widens under the pointer and fades
++// out when idle. darkMode picks a light handle for dark surfaces that don't
++// follow the system theme (a terminal colour scheme, a video).
++QQC2.ScrollBar {
++    id: control
++
++    property bool darkMode: FishUI.Theme.darkMode
++
++    padding: 2
++    minimumSize: 0.05
++
++    contentItem: Rectangle {
++        implicitWidth: control.hovered || control.pressed ? 8 : 5
++        implicitHeight: implicitWidth
++        radius: Math.min(width, height) / 2
++        color: control.darkMode ? Qt.rgba(1, 1, 1, control.pressed ? 0.55 : 0.4)
++                                : Qt.rgba(0, 0, 0, control.pressed ? 0.55 : 0.4)
++        opacity: control.active && control.size < 1 ? 1 : 0
++
++        Behavior on implicitWidth { NumberAnimation { duration: 120 } }
++        Behavior on opacity { NumberAnimation { duration: 250 } }
++    }
++
++    background: Item {}
++}
+diff --git a/src/controls/Slider.qml b/src/controls/Slider.qml
+new file mode 100644
+index 0000000..6e417dd
+--- /dev/null
++++ b/src/controls/Slider.qml
+@@ -0,0 +1,5 @@
++import QtQuick
++import QtQuick.Controls as QQC2
++
++// The Fish style's slider, under the FishUI namespace.
++QQC2.Slider {}
+diff --git a/src/controls/Switch.qml b/src/controls/Switch.qml
+new file mode 100644
+index 0000000..2415799
+--- /dev/null
++++ b/src/controls/Switch.qml
+@@ -0,0 +1,5 @@
++import QtQuick
++import QtQuick.Controls as QQC2
++
++// The Fish style's switch, under the FishUI namespace.
++QQC2.Switch {}
+diff --git a/src/controls/Window.qml b/src/controls/Window.qml
+index 0abbe94..8b1b4b3 100644
+--- a/src/controls/Window.qml
++++ b/src/controls/Window.qml
+@@ -59,6 +59,11 @@ Window {
+     // blurred behind it while blur is enabled in Settings. Apps can opt out by
+     // setting blurBehind: false or override background.opacity.
+     property bool blurBehind: FishUI.Theme.blurEnabled
++    property alias blurEnabled: control.blurBehind
++
++    // Whether the header is dark, for the window buttons' artwork. Apps that
++    // paint their own header (a terminal colour scheme) set it themselves.
++    property bool headerDarkMode: FishUI.Theme.darkMode
+ 
+     property var windowButtonsAlignment: Qt.AlignTop
+     property real windowButtonsTopMargin: FishUI.Units.smallSpacing
+@@ -299,7 +304,7 @@ Window {
+                     // Window buttons
+                     RoundImageButton {
+                         size: _header.buttonSize
+-                        source: "qrc:/fishui/kit/images/" + (FishUI.Theme.darkMode ? "dark/" : "light/") + "minimize.svg"
++                        source: "qrc:/fishui/kit/images/" + (control.headerDarkMode ? "dark/" : "light/") + "minimize.svg"
+                         onClicked: windowHelper.minimizeWindow(control)
+                         visible: control.minimizeButtonVisible
+                         Layout.alignment: control.windowButtonsAlignment
+@@ -313,7 +318,7 @@ Window {
+                     RoundImageButton {
+                         size: _header.buttonSize
+                         source: "qrc:/fishui/kit/images/" +
+-                            (FishUI.Theme.darkMode ? "dark/" : "light/") +
++                            (control.headerDarkMode ? "dark/" : "light/") +
+                             (control.visibility === Window.Maximized ? "restore.svg" : "maximize.svg")
+                         onClicked: control.toggleMaximized()
+                         visible: !control.isFullScreen &&  control.minimumWidth !== control.maximumWidth && control.maximumHeight !== control.minimumHeight
+@@ -327,7 +332,7 @@ Window {
+ 
+                     RoundImageButton {
+                         size: _header.buttonSize
+-                        source: "qrc:/fishui/kit/images/" + (FishUI.Theme.darkMode ? "dark/" : "light/") + "close.svg"
++                        source: "qrc:/fishui/kit/images/" + (control.headerDarkMode ? "dark/" : "light/") + "close.svg"
+                         onClicked: control.close()
+                         // visible: !control.isFullScreen
+                         Layout.alignment: control.windowButtonsAlignment
+diff --git a/src/controls/qmldir b/src/controls/qmldir
+index 9ade358..8ea5089 100644
+--- a/src/controls/qmldir
++++ b/src/controls/qmldir
+@@ -35,3 +35,8 @@ TabView 1.0 TabView.qml
+ Toast 1.0 Toast.qml
+ ConfirmDialog 1.0 ConfirmDialog.qml
+ ConfirmDialogButton 1.0 ConfirmDialogButton.qml
++Label 1.0 Label.qml
++RoundedRectangle 1.0 RoundedRectangle.qml
++ScrollBar 1.0 ScrollBar.qml
++Slider 1.0 Slider.qml
++Switch 1.0 Switch.qml
+diff --git a/src/fishui.cpp b/src/fishui.cpp
+index e340f41..b6f1e24 100644
+--- a/src/fishui.cpp
++++ b/src/fishui.cpp
+@@ -90,6 +90,13 @@ void FishUI::registerTypes(const char *uri)
+ 
+     qmlRegisterType(componentUrl(QStringLiteral("ConfirmDialogButton.qml")), uri, 1, 0, "ConfirmDialogButton");
+ 
++    // Controls the Qt 6 apps (Terminal) expect.
++    qmlRegisterType(componentUrl(QStringLiteral("Label.qml")), uri, 1, 0, "Label");
++    qmlRegisterType(componentUrl(QStringLiteral("RoundedRectangle.qml")), uri, 1, 0, "RoundedRectangle");
++    qmlRegisterType(componentUrl(QStringLiteral("ScrollBar.qml")), uri, 1, 0, "ScrollBar");
++    qmlRegisterType(componentUrl(QStringLiteral("Slider.qml")), uri, 1, 0, "Slider");
++    qmlRegisterType(componentUrl(QStringLiteral("Switch.qml")), uri, 1, 0, "Switch");
++
+     qmlProtectModule(uri, 1);
+ }
+ 
+diff --git a/src/fishui.qrc b/src/fishui.qrc
+index 60aa36c..be8fc5a 100644
+--- a/src/fishui.qrc
++++ b/src/fishui.qrc
+@@ -39,6 +39,11 @@
+         <file>images/toast/success.svg</file>
+         <file>images/toast/warn.svg</file>
+         <file alias="ActionTextField.qml">controls/ActionTextField.qml</file>
++        <file alias="Label.qml">controls/Label.qml</file>
++        <file alias="RoundedRectangle.qml">controls/RoundedRectangle.qml</file>
++        <file alias="ScrollBar.qml">controls/ScrollBar.qml</file>
++        <file alias="Slider.qml">controls/Slider.qml</file>
++        <file alias="Switch.qml">controls/Switch.qml</file>
+     </qresource>
+     <qresource prefix="/"/>
+ </RCC>
+-- 
+2.43.0
+

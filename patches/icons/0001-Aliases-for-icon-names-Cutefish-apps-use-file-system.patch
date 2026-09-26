@@ -1,7 +1,7 @@
 From 140cb3673672d0a037f8fbfaa7db38fe6062771b Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sat, 26 Sep 2026 01:05:23 +0600
-Subject: [PATCH] Aliases for icon names Cutefish apps use:
+Subject: [PATCH 1/2] Aliases for icon names Cutefish apps use:
  file-system-manager, cutefish-calculator, cutefish-screenshot, default-user
 
 ---

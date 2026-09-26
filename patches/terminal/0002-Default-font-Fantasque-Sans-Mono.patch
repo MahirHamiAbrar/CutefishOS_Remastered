@@ -1,0 +1,40 @@
+From f29ceb6147f319f896c62915f39e08432aeda088 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 01:39:36 +0600
+Subject: [PATCH 2/2] Default font: Fantasque Sans Mono
+
+---
+ debian/changelog           | 6 ++++++
+ src/qml/GlobalSettings.qml | 2 +-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 8c2f9f6..1882d80 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-terminal (0.7+remastered2) resolute; urgency=medium
++
++  * Default font: Fantasque Sans Mono
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 01:39:36 +0600
++
+ cutefish-terminal (0.7+remastered1) resolute; urgency=medium
+ 
+   * Build against the in-tree framework applications library; use RoundImageButton (HeaderButton is not in FishUI yet)
+diff --git a/src/qml/GlobalSettings.qml b/src/qml/GlobalSettings.qml
+index 5955145..a383e18 100644
+--- a/src/qml/GlobalSettings.qml
++++ b/src/qml/GlobalSettings.qml
+@@ -28,7 +28,7 @@ Settings {
+     property int width: 760
+     property int height: 450
+     property int fontPointSize: 10
+-    property string fontName: "Noto Mono"
++    property string fontName: "Fantasque Sans Mono"
+     property bool blinkingCursor: true
+     // 0 block, 1 underline, 2 I-beam.
+     property int cursorShape: 0
+-- 
+2.43.0
+

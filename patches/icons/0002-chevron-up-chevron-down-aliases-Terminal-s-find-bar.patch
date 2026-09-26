@@ -1,0 +1,106 @@
+From dfb0aa3202aa687bd5319ccf5e060ae3c7667894 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 01:39:30 +0600
+Subject: [PATCH 2/2] chevron-up/chevron-down aliases (Terminal's find bar)
+
+---
+ debian/changelog                | 6 ++++++
+ src/actions/16/chevron-down.svg | 1 +
+ src/actions/16/chevron-up.svg   | 1 +
+ src/actions/22/chevron-down.svg | 1 +
+ src/actions/22/chevron-up.svg   | 1 +
+ src/actions/24/chevron-down.svg | 1 +
+ src/actions/24/chevron-up.svg   | 1 +
+ src/actions/32/chevron-down.svg | 1 +
+ src/actions/32/chevron-up.svg   | 1 +
+ 9 files changed, 14 insertions(+)
+ create mode 120000 src/actions/16/chevron-down.svg
+ create mode 120000 src/actions/16/chevron-up.svg
+ create mode 120000 src/actions/22/chevron-down.svg
+ create mode 120000 src/actions/22/chevron-up.svg
+ create mode 120000 src/actions/24/chevron-down.svg
+ create mode 120000 src/actions/24/chevron-up.svg
+ create mode 120000 src/actions/32/chevron-down.svg
+ create mode 120000 src/actions/32/chevron-up.svg
+
+diff --git a/debian/changelog b/debian/changelog
+index 5b1d4527..c2446a03 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-icon-theme (1.0.0+remastered2) resolute; urgency=medium
++
++  * chevron-up/chevron-down aliases (Terminal's find bar)
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 01:39:30 +0600
++
+ cutefish-icon-theme (1.0.0+remastered1) resolute; urgency=medium
+ 
+   * Aliases for icon names Cutefish apps use: file-system-manager, cutefish-calculator, cutefish-screenshot, default-user
+diff --git a/src/actions/16/chevron-down.svg b/src/actions/16/chevron-down.svg
+new file mode 120000
+index 00000000..a8eb1b5c
+--- /dev/null
++++ b/src/actions/16/chevron-down.svg
+@@ -0,0 +1 @@
++go-down.svg
+\ No newline at end of file
+diff --git a/src/actions/16/chevron-up.svg b/src/actions/16/chevron-up.svg
+new file mode 120000
+index 00000000..fa0b0a6a
+--- /dev/null
++++ b/src/actions/16/chevron-up.svg
+@@ -0,0 +1 @@
++go-up.svg
+\ No newline at end of file
+diff --git a/src/actions/22/chevron-down.svg b/src/actions/22/chevron-down.svg
+new file mode 120000
+index 00000000..a8eb1b5c
+--- /dev/null
++++ b/src/actions/22/chevron-down.svg
+@@ -0,0 +1 @@
++go-down.svg
+\ No newline at end of file
+diff --git a/src/actions/22/chevron-up.svg b/src/actions/22/chevron-up.svg
+new file mode 120000
+index 00000000..fa0b0a6a
+--- /dev/null
++++ b/src/actions/22/chevron-up.svg
+@@ -0,0 +1 @@
++go-up.svg
+\ No newline at end of file
+diff --git a/src/actions/24/chevron-down.svg b/src/actions/24/chevron-down.svg
+new file mode 120000
+index 00000000..a8eb1b5c
+--- /dev/null
++++ b/src/actions/24/chevron-down.svg
+@@ -0,0 +1 @@
++go-down.svg
+\ No newline at end of file
+diff --git a/src/actions/24/chevron-up.svg b/src/actions/24/chevron-up.svg
+new file mode 120000
+index 00000000..fa0b0a6a
+--- /dev/null
++++ b/src/actions/24/chevron-up.svg
+@@ -0,0 +1 @@
++go-up.svg
+\ No newline at end of file
+diff --git a/src/actions/32/chevron-down.svg b/src/actions/32/chevron-down.svg
+new file mode 120000
+index 00000000..a8eb1b5c
+--- /dev/null
++++ b/src/actions/32/chevron-down.svg
+@@ -0,0 +1 @@
++go-down.svg
+\ No newline at end of file
+diff --git a/src/actions/32/chevron-up.svg b/src/actions/32/chevron-up.svg
+new file mode 120000
+index 00000000..fa0b0a6a
+--- /dev/null
++++ b/src/actions/32/chevron-up.svg
+@@ -0,0 +1 @@
++go-up.svg
+\ No newline at end of file
+-- 
+2.43.0
+

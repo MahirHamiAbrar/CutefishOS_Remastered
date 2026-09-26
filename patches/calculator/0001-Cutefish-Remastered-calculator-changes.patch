@@ -1,7 +1,7 @@
 From 542629e2c445dd73c05a99520e7185d63ada4ac2 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Fri, 25 Sep 2026 22:14:32 +0600
-Subject: [PATCH] Cutefish Remastered: calculator changes
+Subject: [PATCH 1/2] Cutefish Remastered: calculator changes
 
 - Port to Qt 6
 ---
