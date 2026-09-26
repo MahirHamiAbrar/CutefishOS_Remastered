@@ -1,0 +1,66 @@
+From c8c969ce200bcac0d8875c7ed7adb21b16447a44 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sat, 26 Sep 2026 19:25:29 +0600
+Subject: [PATCH 4/4] Session: take the language from LANG before locale.gen,
+ keep the system's formats
+
+---
+ debian/changelog        |  6 ++++++
+ session/application.cpp | 19 ++++++++++++++-----
+ 2 files changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 49447ef..271b205 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-core (0.8+remastered4) resolute; urgency=medium
++
++  * Session: take the language from LANG before locale.gen, keep the system's formats
++
++ -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 19:25:29 +0600
++
+ cutefish-core (0.8+remastered3) resolute; urgency=medium
+ 
+   * Session: use the Cutefish lock screen (PLASMA_DEFAULT_SHELL)
+diff --git a/session/application.cpp b/session/application.cpp
+index 22afa79..1db34a0 100644
+--- a/session/application.cpp
++++ b/session/application.cpp
+@@ -178,7 +178,16 @@ void Application::initLanguage()
+     QSettings settings(QSettings::UserScope, "cutefishos", "language");
+     QString value = settings.value("language", "").toString();
+ 
+-    // Init Language
++    // Init Language: the system default (LANG, from /etc/default/locale),
++    // which the installer sets to the chosen language. /etc/locale.gen also
++    // lists the locale picked for number and date formats, so it's only a
++    // last resort.
++    if (value.isEmpty()) {
++        const QString lang = qEnvironmentVariable("LANG").split('.').first();
++        if (!lang.isEmpty() && lang != "C" && lang != "POSIX")
++            value = lang;
++    }
++
+     if (value.isEmpty()) {
+         QFile file("/etc/locale.gen");
+         if (file.open(QIODevice::ReadOnly)) {
+@@ -207,11 +216,11 @@ void Application::initLanguage()
+         "LANG", "LC_NUMERIC", "LC_TIME", "LC_MONETARY", "LC_MEASUREMENT", "LC_COLLATE", "LC_CTYPE"
+     };
+ 
++    // Formats the system sets on its own (the installer's "numbers and dates
++    // locale") stay; the language only fills in the rest.
+     for (auto lc : lcValues) {
+-        const QString value = str;
+-        if (!value.isEmpty()) {
+-            qputenv(lc, value.toUtf8());
+-        }
++        if (qstrcmp(lc, "LANG") == 0 || qEnvironmentVariableIsEmpty(lc))
++            qputenv(lc, str.toUtf8());
+     }
+ 
+     if (!value.isEmpty()) {
+-- 
+2.43.0
+

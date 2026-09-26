@@ -23,6 +23,8 @@ shift $(( $# >= 2 ? 2 : $# ))
 VM=cutefish-$fw
 DIR=$PWD/build/vm
 ISO=$PWD/build/cutefish-os-26.04-amd64.iso
+# Guest account for run/srun: the live user by default; set these for an installed system.
+VM_USER=${VM_USER:-cutefish} VM_PASS=${VM_PASS:-}
 
 # Small USB sticks with NTFS and exFAT filesystems, made in the builder
 # container (no mkfs tools needed on the host).
@@ -59,7 +61,7 @@ create)
     VBoxManage storageattach "$VM" --storagectl USB --port 1 --device 0 --type hdd --medium "$DIR/usb-exfat.vdi"
     echo "created $VM"
     ;;
-start)   VBoxManage startvm "$VM" --type headless ;;
+start)   (cd "$DIR" && VBoxManage startvm "$VM" --type headless) ;;  # VBoxHeadless logs to the cwd
 shot)
     name=${1:?shot name}
     for d in 0 1; do
@@ -84,11 +86,11 @@ displays)
     VBoxManage controlvm "$VM" setscreenlayout "${layout[@]}"
     ;;
 type)    VBoxManage controlvm "$VM" keyboardputstring "$*" ;;
-run)     VBoxManage guestcontrol "$VM" run --username cutefish --password "" --wait-stdout --wait-stderr -- "$@" ;;
+run)     VBoxManage guestcontrol "$VM" run --username "$VM_USER" --password "$VM_PASS" --wait-stdout --wait-stderr -- "$@" ;;
 srun)
     # guestcontrol processes aren't in the logind session, so polkit treats them
     # as inactive. Cutefish's AppRuntime starts the command from the session.
-    VBoxManage guestcontrol "$VM" run --username cutefish --password "" --wait-stdout --wait-stderr -- /bin/sh -c '
+    VBoxManage guestcontrol "$VM" run --username "$VM_USER" --password "$VM_PASS" --wait-stdout --wait-stderr -- /bin/sh -c '
         export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
         rm -f /tmp/srun.out /tmp/srun.rc
         busctl --user -- call com.cutefish.AppRuntime /AppRuntime com.cutefish.AppRuntime launchCommand sass \
