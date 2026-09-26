@@ -181,3 +181,8 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Symptom:** The BIOS VM showed the GRUB menu with no countdown, and choosing "Try or Install Cutefish OS" just showed the menu again. UEFI boots were fine.
 - **Cause:** The BIOS El Torito image is a `grub-mkstandalone` image, which embeds its config in a memdisk. `$root` was that memdisk, so `/casper/vmlinuz` wasn't found. The embedded image also lacked the `test` module (`if [ … ]`), and the config had a stray `grub_platform` line (a variable, not a command). The signed UEFI GRUB finds the medium itself, which is why UEFI worked.
 - **Fix:** The BIOS image embeds a three-line config that finds the medium by `/.disk/info` and then loads the real `/boot/grub/grub.cfg`; `test`, `configfile` and `search_fs_file` are built in, and the stray line is gone (`scripts/build-iso.sh`).
+
+## 30. The installer always said "not connected to the Internet"
+- **Symptom:** Even with the network up and the installer allowed through the firewall (and `curl http://connectivity-check.ubuntu.com` returning 204), the welcome page said "The system is not connected to the Internet", and Calamares logged `hasInternet : false`.
+- **Cause:** Calamares' check (`synchronousPing` in `libcalamares/network/Manager.cpp`, 3.3.14) only counts a reply as success if it has a body (`bytesAvailable()`). Ubuntu's connectivity-check URL answers `204 No Content`.
+- **Fix:** `internetCheckUrl: https://geoip.ubuntu.com/lookup`, which returns a small XML body and which the installer contacts anyway (`packaging/calamares/modules/welcome.conf`, meta 26.04.7). Checked in the live VM: `hasInternet : true`.

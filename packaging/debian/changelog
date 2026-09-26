@@ -1,3 +1,12 @@
+cutefish-meta (26.04.7) resolute; urgency=medium
+
+  * calamares-settings-cutefish: check for the Internet with
+    https://geoip.ubuntu.com/lookup. Calamares only accepts a reply with a
+    body, and connectivity-check.ubuntu.com answers 204, so the welcome page
+    always said "not connected to the Internet".
+
+ -- Cutefish Remastered <remastered@localhost>  Sat, 26 Sep 2026 22:13:14 +0600
+
 cutefish-meta (26.04.6) resolute; urgency=medium
 
   * cutefish-live: OpenSnitch rule allowing the installer and the programs it
