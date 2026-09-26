@@ -1,7 +1,7 @@
 From f18d05dbcdfbf7e7ad9f10b5edc7ef0e23194b63 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sat, 26 Sep 2026 01:06:24 +0600
-Subject: [PATCH 2/5] Autostart: follow the XDG rules (OnlyShowIn/NotShowIn,
+Subject: [PATCH 2/6] Autostart: follow the XDG rules (OnlyShowIn/NotShowIn,
  Hidden, TryExec, user overrides) instead of skipping every OnlyShowIn entry
 
 ---

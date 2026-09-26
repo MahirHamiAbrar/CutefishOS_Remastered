@@ -1,0 +1,73 @@
+From 1b2aedb0461adc77fc842df92a6248eb0e57da64 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:15:53 +0600
+Subject: [PATCH 6/6] Session applies the formats locale from Settings; leaving
+ a CJK language restores Inter
+
+---
+ cutefish-services/locale/language.cpp | 7 +++++--
+ debian/changelog                      | 6 ++++++
+ session/application.cpp               | 9 +++++++++
+ 3 files changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/cutefish-services/locale/language.cpp b/cutefish-services/locale/language.cpp
+index 2b48325..6445f03 100644
+--- a/cutefish-services/locale/language.cpp
++++ b/cutefish-services/locale/language.cpp
+@@ -59,14 +59,17 @@ void Language::setLanguage(const QString &code)
+     // Change fonts
+     if (code == "zh_CN") {
+         settings.setValue("Font", "Noto Sans CJK SC");
+-    } else if (code.contains("en_")) {
+-        settings.setValue("Font", "Noto Sans");
+     } else if (code == "zh_TW") {
+         settings.setValue("Font", "Noto Sans CJK TC");
+     } else if (code == "zh_HK") {
+         settings.setValue("Font", "Noto Serif CJK HK");
+     } else if (code == "ja_JP") {
+         settings.setValue("Font", "Noto Serif CJK JP");
++    } else {
++        // Leaving a CJK language: back to the default UI font.
++        const QString font = settings.value("Font").toString();
++        if (font.isEmpty() || font.startsWith("Noto Sans CJK") || font.startsWith("Noto Serif CJK"))
++            settings.setValue("Font", "Inter");
+     }
+ 
+     m_settings->setValue("language", code);
+diff --git a/debian/changelog b/debian/changelog
+index c572417..e9b9e41 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-core (0.8+remastered6) resolute; urgency=medium
++
++  * Session applies the formats locale from Settings; leaving a CJK language restores Inter
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:15:53 +0600
++
+ cutefish-core (0.8+remastered5) resolute; urgency=medium
+ 
+   * Appearance service: windowOpacity and windowRadius; Inter / JetBrains Mono as the default fonts
+diff --git a/session/application.cpp b/session/application.cpp
+index 1db34a0..eed2c22 100644
+--- a/session/application.cpp
++++ b/session/application.cpp
+@@ -223,6 +223,15 @@ void Application::initLanguage()
+             qputenv(lc, str.toUtf8());
+     }
+ 
++    // Formats chosen in Settings → Region & Language (numbers, dates,
++    // currency, units, paper) win over both, independently of the language.
++    const QString formats = settings.value("formats").toString();
++    if (!formats.isEmpty()) {
++        const QByteArray formatsLocale = QString("%1.UTF-8").arg(formats).toUtf8();
++        for (auto lc : { "LC_NUMERIC", "LC_TIME", "LC_MONETARY", "LC_MEASUREMENT", "LC_PAPER" })
++            qputenv(lc, formatsLocale);
++    }
++
+     if (!value.isEmpty()) {
+         qputenv("LANGUAGE", value.toUtf8());
+     }
+-- 
+2.43.0
+

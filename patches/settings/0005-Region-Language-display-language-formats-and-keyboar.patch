@@ -1,0 +1,845 @@
+From b186a2f65ec31f71d7e0a9207166b022f0b7e268 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 02:15:53 +0600
+Subject: [PATCH 5/5] Region & Language: display language, formats and keyboard
+ layouts, independent of the time zone
+
+---
+ CMakeLists.txt           |   1 +
+ debian/changelog         |   6 ++
+ src/application.cpp      |   2 +
+ src/keyboardlayouts.cpp  | 225 +++++++++++++++++++++++++++++++++++++++
+ src/keyboardlayouts.h    |  67 ++++++++++++
+ src/language.cpp         | 113 +++++++++++++++++++-
+ src/language.h           |  26 +++++
+ src/qml/LanguagePage.qml | 209 ++++++++++++++++++++++++------------
+ src/qml/SideBar.qml      |   2 +-
+ 9 files changed, 581 insertions(+), 70 deletions(-)
+ create mode 100644 src/keyboardlayouts.cpp
+ create mode 100644 src/keyboardlayouts.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 09137d7..235170c 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -65,6 +65,7 @@ set(SRCS
+     src/networkproxy.cpp
+     src/defaultapplications.cpp
+     src/windoweffects.cpp
++    src/keyboardlayouts.cpp
+     src/netmonitorclient.cpp
+ #    src/update/updatemodel.cpp
+ )
+diff --git a/debian/changelog b/debian/changelog
+index 82ea9c2..71ab62e 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-settings (0.8+remastered7) resolute; urgency=medium
++
++  * Region & Language: display language, formats and keyboard layouts, independent of the time zone
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 02:15:53 +0600
++
+ cutefish-settings (0.8+remastered6) resolute; urgency=medium
+ 
+   * Blur & Transparency page; Window corners; manual date and time; time zone search; lighter sidebar tint
+diff --git a/src/application.cpp b/src/application.cpp
+index f1c17e4..f5fd57b 100644
+--- a/src/application.cpp
++++ b/src/application.cpp
+@@ -21,6 +21,7 @@
+ #include "notifications.h"
+ #include "defaultapplications.h"
+ #include "windoweffects.h"
++#include "keyboardlayouts.h"
+ #include "netmonitorclient.h"
+ #include "applicationregistry.h"
+ 
+@@ -76,6 +77,7 @@ Application::Application(int &argc, char **argv)
+     qmlRegisterType<CursorThemeModel>(uri, 1, 0, "CursorThemeModel");
+     qmlRegisterType<About>(uri, 1, 0, "About");
+     qmlRegisterType<Language>(uri, 1, 0, "Language");
++    qmlRegisterType<KeyboardLayouts>(uri, 1, 0, "KeyboardLayouts");
+     qmlRegisterType<Fonts>(uri, 1, 0, "Fonts");
+     qmlRegisterType<PowerManager>(uri, 1, 0, "PowerManager");
+     qmlRegisterType<Mouse>(uri, 1, 0, "Mouse");
+diff --git a/src/keyboardlayouts.cpp b/src/keyboardlayouts.cpp
+new file mode 100644
+index 0000000..e0d8ce7
+--- /dev/null
++++ b/src/keyboardlayouts.cpp
+@@ -0,0 +1,225 @@
++/*
++ * Cutefish Remastered: keyboard layouts, written to ~/.config/kxkbrc where
++ * KWin reads them.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++#include "keyboardlayouts.h"
++
++#include <KConfig>
++#include <KConfigGroup>
++
++#include <QDBusConnection>
++#include <QDBusMessage>
++#include <QFile>
++#include <QXmlStreamReader>
++
++#include <algorithm>
++
++// Switch shortcuts offered, as xkb options (index 0: none).
++static const QList<QPair<const char *, QString>> s_switchOptions = {
++    { QT_TRANSLATE_NOOP("KeyboardLayouts", "None"), QString() },
++    { QT_TRANSLATE_NOOP("KeyboardLayouts", "Meta+Space"), QStringLiteral("grp:win_space_toggle") },
++    { QT_TRANSLATE_NOOP("KeyboardLayouts", "Alt+Shift"), QStringLiteral("grp:alt_shift_toggle") },
++    { QT_TRANSLATE_NOOP("KeyboardLayouts", "Ctrl+Shift"), QStringLiteral("grp:ctrl_shift_toggle") },
++    { QT_TRANSLATE_NOOP("KeyboardLayouts", "Caps Lock"), QStringLiteral("grp:caps_toggle") },
++};
++
++KeyboardLayouts::KeyboardLayouts(QObject *parent)
++    : QObject(parent)
++{
++    // xkb's own catalogue of layouts and variants.
++    QFile rules(QStringLiteral("/usr/share/X11/xkb/rules/evdev.xml"));
++    if (rules.open(QIODevice::ReadOnly)) {
++        QXmlStreamReader xml(&rules);
++        QString layout, name, description;
++        bool inLayoutList = false; // models come first, options after
++        bool inVariant = false;
++        while (!xml.atEnd()) {
++            xml.readNext();
++            if (!inLayoutList) {
++                inLayoutList = xml.isStartElement() && xml.name() == QLatin1String("layoutList");
++                continue;
++            }
++            if (xml.isStartElement()) {
++                if (xml.name() == QLatin1String("layout")) {
++                    layout.clear();
++                    inVariant = false;
++                } else if (xml.name() == QLatin1String("variant")) {
++                    inVariant = true;
++                } else if (xml.name() == QLatin1String("name")) {
++                    name = xml.readElementText();
++                } else if (xml.name() == QLatin1String("description")) {
++                    description = xml.readElementText();
++                }
++            } else if (xml.isEndElement() && xml.name() == QLatin1String("configItem")) {
++                if (!inVariant && layout.isEmpty()) {
++                    layout = name;
++                    m_layoutNames.insert(layout, description);
++                } else if (inVariant && !layout.isEmpty()) {
++                    m_variants[layout].append({ name, description });
++                }
++            } else if (xml.isEndElement() && xml.name() == QLatin1String("variant")) {
++                inVariant = false;
++            } else if (xml.isEndElement() && xml.name() == QLatin1String("layoutList")) {
++                break;
++            }
++        }
++    }
++
++    QList<QPair<QString, QString>> sorted;
++    for (auto it = m_layoutNames.cbegin(); it != m_layoutNames.cend(); ++it)
++        sorted.append({ it.value(), it.key() });
++    std::sort(sorted.begin(), sorted.end());
++    for (const auto &item : sorted)
++        m_available.append(QVariantMap { { "layout", item.second }, { "name", item.first } });
++
++    load();
++}
++
++void KeyboardLayouts::load()
++{
++    KConfig config(QStringLiteral("kxkbrc"), KConfig::NoGlobals);
++    const KConfigGroup group = config.group(QStringLiteral("Layout"));
++    const QStringList layouts = group.readEntry("LayoutList", QString()).split(',', Qt::SkipEmptyParts);
++    const QStringList variants = group.readEntry("VariantList", QString()).split(',');
++
++    m_entries.clear();
++    if (group.readEntry("Use", false)) {
++        for (int i = 0; i < layouts.size(); ++i)
++            m_entries.append({ layouts.at(i).trimmed(), variants.value(i).trimmed() });
++    }
++    if (m_entries.isEmpty())
++        m_entries.append({ QStringLiteral("us"), QString() });
++
++    m_options.clear();
++    m_switchOption.clear();
++    for (const QString &option : group.readEntry("Options", QString()).split(',', Qt::SkipEmptyParts)) {
++        if (option.startsWith(QLatin1String("grp:")))
++            m_switchOption = option;
++        else
++            m_options.append(option);
++    }
++}
++
++void KeyboardLayouts::save()
++{
++    QStringList layouts, variants;
++    for (const Entry &entry : std::as_const(m_entries)) {
++        layouts.append(entry.layout);
++        variants.append(entry.variant);
++    }
++    QStringList options = m_options;
++    if (!m_switchOption.isEmpty())
++        options.append(m_switchOption);
++
++    KConfig config(QStringLiteral("kxkbrc"), KConfig::NoGlobals);
++    KConfigGroup group = config.group(QStringLiteral("Layout"));
++    group.writeEntry("Use", true);
++    group.writeEntry("LayoutList", layouts.join(','));
++    group.writeEntry("VariantList", variants.join(','));
++    group.writeEntry("ResetOldOptions", true);
++    group.writeEntry("Options", options.join(','));
++    config.sync();
++
++    // KWin reloads its keymap on this signal.
++    QDBusConnection::sessionBus().send(QDBusMessage::createSignal(
++        QStringLiteral("/Layouts"), QStringLiteral("org.kde.keyboard"), QStringLiteral("reloadConfig")));
++}
++
++QString KeyboardLayouts::describe(const Entry &entry) const
++{
++    if (!entry.variant.isEmpty()) {
++        for (const auto &variant : m_variants.value(entry.layout)) {
++            if (variant.first == entry.variant)
++                return variant.second;
++        }
++    }
++    return m_layoutNames.value(entry.layout, entry.layout);
++}
++
++QVariantList KeyboardLayouts::layouts() const
++{
++    QVariantList result;
++    for (const Entry &entry : m_entries) {
++        result.append(QVariantMap { { "layout", entry.layout },
++                                    { "variant", entry.variant },
++                                    { "name", describe(entry) } });
++    }
++    return result;
++}
++
++QVariantList KeyboardLayouts::variants(const QString &layout) const
++{
++    QVariantList result { QVariantMap { { "variant", QString() }, { "name", tr("Default") } } };
++    for (const auto &variant : m_variants.value(layout))
++        result.append(QVariantMap { { "variant", variant.first }, { "name", variant.second } });
++    return result;
++}
++
++void KeyboardLayouts::addLayout(const QString &layout, const QString &variant)
++{
++    if (!m_layoutNames.contains(layout))
++        return;
++    for (const Entry &entry : std::as_const(m_entries)) {
++        if (entry.layout == layout && entry.variant == variant)
++            return;
++    }
++
++    m_entries.append({ layout, variant });
++    // Two layouts need a way to switch between them.
++    if (m_entries.size() == 2 && m_switchOption.isEmpty()) {
++        m_switchOption = s_switchOptions.at(1).second;
++        emit switchShortcutChanged();
++    }
++    save();
++    emit layoutsChanged();
++}
++
++void KeyboardLayouts::removeLayout(int index)
++{
++    if (index < 0 || index >= m_entries.size() || m_entries.size() == 1)
++        return;
++    m_entries.removeAt(index);
++    save();
++    emit layoutsChanged();
++}
++
++void KeyboardLayouts::moveLayout(int from, int to)
++{
++    if (from < 0 || from >= m_entries.size() || to < 0 || to >= m_entries.size() || from == to)
++        return;
++    m_entries.move(from, to);
++    save();
++    emit layoutsChanged();
++}
++
++QStringList KeyboardLayouts::switchShortcuts() const
++{
++    QStringList names;
++    for (const auto &option : s_switchOptions)
++        names.append(tr(option.first));
++    return names;
++}
++
++int KeyboardLayouts::switchShortcut() const
++{
++    for (int i = 0; i < s_switchOptions.size(); ++i) {
++        if (s_switchOptions.at(i).second == m_switchOption)
++            return i;
++    }
++    return 0;
++}
++
++void KeyboardLayouts::setSwitchShortcut(int index)
++{
++    if (index < 0 || index >= s_switchOptions.size() || index == switchShortcut())
++        return;
++    m_switchOption = s_switchOptions.at(index).second;
++    save();
++    emit switchShortcutChanged();
++}
+diff --git a/src/keyboardlayouts.h b/src/keyboardlayouts.h
+new file mode 100644
+index 0000000..b63990b
+--- /dev/null
++++ b/src/keyboardlayouts.h
+@@ -0,0 +1,67 @@
++/*
++ * Cutefish Remastered: keyboard layouts, written to ~/.config/kxkbrc where
++ * KWin reads them.
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * any later version.
++ */
++
++#ifndef KEYBOARDLAYOUTS_H
++#define KEYBOARDLAYOUTS_H
++
++#include <QObject>
++#include <QStringList>
++#include <QVariantList>
++
++class KeyboardLayouts : public QObject
++{
++    Q_OBJECT
++    //! The layouts in use, in switching order: [{ layout, variant, name }].
++    Q_PROPERTY(QVariantList layouts READ layouts NOTIFY layoutsChanged)
++    //! Every layout xkb knows: [{ layout, name }], sorted by name.
++    Q_PROPERTY(QVariantList availableLayouts READ availableLayouts CONSTANT)
++    Q_PROPERTY(QStringList switchShortcuts READ switchShortcuts CONSTANT)
++    Q_PROPERTY(int switchShortcut READ switchShortcut WRITE setSwitchShortcut NOTIFY switchShortcutChanged)
++
++public:
++    explicit KeyboardLayouts(QObject *parent = nullptr);
++
++    QVariantList layouts() const;
++    QVariantList availableLayouts() const { return m_available; }
++
++    //! Variants of @p layout: [{ variant, name }], the default first.
++    Q_INVOKABLE QVariantList variants(const QString &layout) const;
++
++    Q_INVOKABLE void addLayout(const QString &layout, const QString &variant);
++    Q_INVOKABLE void removeLayout(int index);
++    Q_INVOKABLE void moveLayout(int from, int to);
++
++    QStringList switchShortcuts() const;
++    int switchShortcut() const;
++    void setSwitchShortcut(int index);
++
++signals:
++    void layoutsChanged();
++    void switchShortcutChanged();
++
++private:
++    struct Entry {
++        QString layout;
++        QString variant;
++    };
++
++    void load();
++    void save();
++    QString describe(const Entry &entry) const;
++
++    QVariantList m_available;
++    QHash<QString, QString> m_layoutNames;                   // us -> English (US)
++    QHash<QString, QList<QPair<QString, QString>>> m_variants; // us -> [(intl, English (US, intl.))]
++    QList<Entry> m_entries;
++    QStringList m_options; // xkb options other than the grp: switch
++    QString m_switchOption;
++};
++
++#endif // KEYBOARDLAYOUTS_H
+diff --git a/src/language.cpp b/src/language.cpp
+index 5d63a75..41115ed 100644
+--- a/src/language.cpp
++++ b/src/language.cpp
+@@ -23,14 +23,18 @@
+ #include <QDir>
+ 
+ #include <QDBusPendingCall>
++#include <QDate>
++#include <QFile>
++#include <QProcess>
++#include <QSettings>
+ 
+ #include <unicode/locid.h>
+ #include <unicode/unistr.h>
+ 
+ static const QStringList supportList = {"en_US", "en_GB", "de_DE", "cs_CZ", "es_ES",
+                                         "es_MX", "ar_AA", "bg_BG", "fa_IR", "fi_FI", "fr_FR",
+-                                        "uk_UA", "uz_UZ", "hu_HU", "hi_IN", "id_ID"
+-                                        "it_IT", "ja_JP", "nb_NO", "ne_NP", "pl_PL",
++                                        "uk_UA", "uz_UZ", "hu_HU", "hi_IN", "id_ID",
++                                        "it_IT", "bn_BD", "ja_JP", "nb_NO", "ne_NP", "pl_PL",
+                                         "pt_BR", "pt_PT", "ru_RU", "sv_SE", "so",
+                                         "be_BY", "be_Latn", "tr_TR", "zh_CN", "zh_HK", "zh_TW"
+                                        };
+@@ -72,6 +76,111 @@ Language::Language(QObject *parent)
+ 
+     emit loadLanguageFinished();
+     emit currentLanguageChanged();
++
++    loadFormats();
++}
++
++static QString normalizedLocale(QString name)
++{
++    // "bn_BD.UTF-8", "bn_BD.utf8" -> "bn_BD"; only UTF-8 locales are offered.
++    return name.section('.', 0, 0);
++}
++
++void Language::loadFormats()
++{
++    QProcess localeList;
++    localeList.start(QStringLiteral("locale"), { QStringLiteral("-a") });
++    localeList.waitForFinished(3000);
++    for (const QString &line : QString::fromUtf8(localeList.readAllStandardOutput()).split('\n')) {
++        if (line.contains(QLatin1String(".utf8"), Qt::CaseInsensitive))
++            m_generatedLocales.insert(normalizedLocale(line.trimmed()));
++    }
++
++    QMap<QString, QString> byName;
++    QFile supported(QStringLiteral("/usr/share/i18n/SUPPORTED"));
++    if (supported.open(QIODevice::ReadOnly)) {
++        for (const QString &line : QString::fromUtf8(supported.readAll()).split('\n')) {
++            const QStringList parts = line.simplified().split(' ');
++            if (parts.size() != 2 || parts.at(1) != QLatin1String("UTF-8") || parts.at(0).contains('@'))
++                continue;
++            const QString code = normalizedLocale(parts.at(0));
++            const QLocale locale(code);
++            if (locale.language() == QLocale::C)
++                continue;
++            const QString name = QStringLiteral("%1 (%2) — %3")
++                    .arg(QLocale::languageToString(locale.language()),
++                         QLocale::territoryToString(locale.territory()), code);
++            byName.insert(name, code);
++        }
++    }
++
++    m_formatNames = { tr("Same as the language") };
++    m_formatCodes = { QString() };
++    for (auto it = byName.cbegin(); it != byName.cend(); ++it) {
++        if (m_formatCodes.contains(it.value()))
++            continue;
++        m_formatNames.append(it.key());
++        m_formatCodes.append(it.value());
++    }
++
++    const QString current = QSettings(QStringLiteral("cutefishos"), QStringLiteral("language"))
++            .value(QStringLiteral("formats")).toString();
++    m_currentFormats = qMax(0, m_formatCodes.indexOf(current));
++    emit currentFormatsChanged();
++}
++
++QString Language::formatsPreview() const
++{
++    QString code = m_formatCodes.value(m_currentFormats);
++    if (code.isEmpty())
++        code = m_languageCodes.value(m_currentLanguage, QStringLiteral("en_US"));
++    const QLocale locale(code);
++    return QStringLiteral("%1  ·  %2  ·  %3")
++            .arg(locale.toString(QDate::currentDate(), QLocale::LongFormat),
++                 locale.toString(1234567.89, 'f', 2),
++                 locale.toCurrencyString(1234.5));
++}
++
++void Language::setCurrentFormats(int index)
++{
++    if (index < 0 || index >= m_formatCodes.size() || index == m_currentFormats || m_formatsBusy)
++        return;
++
++    const QString code = m_formatCodes.at(index);
++    if (code.isEmpty() || m_generatedLocales.contains(code)) {
++        saveFormats(index);
++        return;
++    }
++
++    // Not generated yet: glibc would silently fall back to "C".
++    m_formatsBusy = true;
++    emit formatsBusyChanged();
++    auto *process = new QProcess(this);
++    connect(process, &QProcess::finished, this, [this, process, index, code](int exitCode, QProcess::ExitStatus status) {
++        process->deleteLater();
++        m_formatsBusy = false;
++        emit formatsBusyChanged();
++        if (status == QProcess::NormalExit && exitCode == 0) {
++            m_generatedLocales.insert(code);
++            saveFormats(index);
++        } else {
++            emit currentFormatsChanged(); // puts the combo box back
++            emit formatsFailed(tr("Could not generate the %1 locale.").arg(code));
++        }
++    });
++    process->start(QStringLiteral("pkexec"), { QStringLiteral("/usr/sbin/locale-gen"), code + QStringLiteral(".UTF-8") });
++}
++
++void Language::saveFormats(int index)
++{
++    QSettings settings(QStringLiteral("cutefishos"), QStringLiteral("language"));
++    const QString code = m_formatCodes.at(index);
++    if (code.isEmpty())
++        settings.remove(QStringLiteral("formats"));
++    else
++        settings.setValue(QStringLiteral("formats"), code);
++    m_currentFormats = index;
++    emit currentFormatsChanged();
+ }
+ 
+ int Language::currentLanguage() const
+diff --git a/src/language.h b/src/language.h
+index 0f54b36..2924158 100644
+--- a/src/language.h
++++ b/src/language.h
+@@ -22,12 +22,20 @@
+ 
+ #include <QObject>
+ #include <QDBusInterface>
++#include <QSet>
++#include <QVariantList>
+ 
+ class Language : public QObject
+ {
+     Q_OBJECT
+     Q_PROPERTY(QStringList languages READ languages NOTIFY loadLanguageFinished)
+     Q_PROPERTY(int currentLanguage READ currentLanguage NOTIFY currentLanguageChanged)
++    // Formats (numbers, dates, currency, units), independent of the language.
++    // Entry 0 is "same as the language".
++    Q_PROPERTY(QStringList formats READ formats CONSTANT)
++    Q_PROPERTY(int currentFormats READ currentFormats NOTIFY currentFormatsChanged)
++    Q_PROPERTY(QString formatsPreview READ formatsPreview NOTIFY currentFormatsChanged)
++    Q_PROPERTY(bool formatsBusy READ formatsBusy NOTIFY formatsBusyChanged)
+ 
+ public:
+     explicit Language(QObject *parent = nullptr);
+@@ -36,15 +44,33 @@ public:
+     Q_INVOKABLE void setCurrentLanguage(int index);
+     QStringList languages() const;
+ 
++    QStringList formats() const { return m_formatNames; }
++    int currentFormats() const { return m_currentFormats; }
++    QString formatsPreview() const;
++    bool formatsBusy() const { return m_formatsBusy; }
++    //! Generates the locale first if needed (asks for the admin password).
++    Q_INVOKABLE void setCurrentFormats(int index);
++
+ signals:
+     void loadLanguageFinished();
+     void currentLanguageChanged();
++    void currentFormatsChanged();
++    void formatsBusyChanged();
++    void formatsFailed(const QString &message);
+ 
+ private:
+     QDBusInterface m_interface;
+     QStringList m_languageNames;
+     QStringList m_languageCodes;
+     int m_currentLanguage;
++
++    void loadFormats();
++    void saveFormats(int index);
++    QStringList m_formatNames;
++    QStringList m_formatCodes;
++    QSet<QString> m_generatedLocales;
++    int m_currentFormats = 0;
++    bool m_formatsBusy = false;
+ };
+ 
+ #endif // LOCALE_H
+diff --git a/src/qml/LanguagePage.qml b/src/qml/LanguagePage.qml
+index fc7649a..b188a2a 100644
+--- a/src/qml/LanguagePage.qml
++++ b/src/qml/LanguagePage.qml
+@@ -1,116 +1,191 @@
+ /*
+  * Copyright (C) 2021 CutefishOS Team.
+  *
+- * Author:     revenmartin <revenmartin@gmail.com>
++ * Cutefish Remastered: Region & Language. The display language, the formats
++ * (numbers, dates, currency, units) and the keyboard layouts are chosen
++ * separately; none of them follows the time zone.
+  *
+  * This program is free software: you can redistribute it and/or modify
+  * it under the terms of the GNU General Public License as published by
+  * the Free Software Foundation, either version 3 of the License, or
+  * any later version.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ 
+ import QtQuick 2.12
+ import QtQuick.Controls 2.12
+ import QtQuick.Layouts 1.12
+-import Qt5Compat.GraphicalEffects
+ 
+ import FishUI 1.0 as FishUI
+ import Cutefish.Settings 1.0 as Settings
+ 
+ ItemPage {
+-    headerTitle: qsTr("Language")
++    headerTitle: qsTr("Region & Language")
+ 
+     Settings.Language {
+         id: language
++        onFormatsFailed: (message) => formatsError.text = message
++    }
++
++    Settings.KeyboardLayouts {
++        id: keyboard
+     }
+ 
+-    ColumnLayout {
++    Scrollable {
+         anchors.fill: parent
+-        anchors.topMargin: FishUI.Units.smallSpacing
++        contentHeight: layout.implicitHeight
+ 
+-        ListView {
+-            id: listView
++        ColumnLayout {
++            id: layout
++            anchors.fill: parent
++            spacing: FishUI.Units.largeSpacing * 2
+ 
+-            FishUI.WheelHandler {
+-                target: listView
+-            }
++            RoundedItem {
++                Label {
++                    text: qsTr("Language")
++                    color: FishUI.Theme.disabledTextColor
++                }
+ 
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
++                RowLayout {
++                    spacing: FishUI.Units.largeSpacing
+ 
+-            model: language.languages
+-            clip: true
++                    Label {
++                        text: qsTr("Display language")
++                        Layout.preferredWidth: 150
++                    }
+ 
+-            topMargin: FishUI.Units.largeSpacing
+-            leftMargin: FishUI.Units.largeSpacing * 2
+-            rightMargin: FishUI.Units.largeSpacing * 2
+-            bottomMargin: FishUI.Units.largeSpacing
+-            spacing: FishUI.Units.largeSpacing
++                    ComboBox {
++                        Layout.fillWidth: true
++                        model: language.languages
++                        currentIndex: language.currentLanguage
++                        onActivated: (index) => language.setCurrentLanguage(index)
++                    }
++                }
+ 
+-            currentIndex: language.currentLanguage
++                RowLayout {
++                    spacing: FishUI.Units.largeSpacing
+ 
+-            ScrollBar.vertical: ScrollBar {
+-                bottomPadding: FishUI.Theme.smallRadius
+-            }
++                    Label {
++                        text: qsTr("Formats")
++                        Layout.preferredWidth: 150
++                    }
+ 
+-            highlightFollowsCurrentItem: true
+-            highlightMoveDuration: 0
+-            highlightResizeDuration : 0
+-            highlight: Rectangle {
+-                color: FishUI.Theme.highlightColor
+-                radius: FishUI.Theme.smallRadius
+-            }
++                    ComboBox {
++                        Layout.fillWidth: true
++                        model: language.formats
++                        currentIndex: language.currentFormats
++                        enabled: !language.formatsBusy
++                        onActivated: (index) => {
++                            formatsError.text = ""
++                            language.setCurrentFormats(index)
++                        }
++                    }
++                }
+ 
+-            delegate: MouseArea {
+-                property bool isSelected: index == listView.currentIndex
++                Label {
++                    text: language.formatsBusy ? qsTr("Preparing the formats…") : language.formatsPreview
++                    color: FishUI.Theme.disabledTextColor
++                    wrapMode: Text.WordWrap
++                    Layout.fillWidth: true
++                }
+ 
+-                id: item
+-                width: ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin
+-                height: 36
+-                hoverEnabled: true
+-                acceptedButtons: Qt.LeftButton
++                Label {
++                    id: formatsError
++                    visible: text !== ""
++                    color: FishUI.Theme.redColor
++                    wrapMode: Text.WordWrap
++                    Layout.fillWidth: true
++                }
++
++                Label {
++                    text: qsTr("Formats are numbers, dates, currency and units. Changes take effect the next time you log in.")
++                    color: FishUI.Theme.disabledTextColor
++                    wrapMode: Text.WordWrap
++                    Layout.fillWidth: true
++                }
++            }
++
++            RoundedItem {
++                Layout.bottomMargin: FishUI.Units.largeSpacing * 2
+ 
+-                onClicked: {
+-                    language.setCurrentLanguage(index)
++                Label {
++                    text: qsTr("Keyboard layouts")
++                    color: FishUI.Theme.disabledTextColor
+                 }
+ 
+-                Rectangle {
+-                    anchors.fill: parent
+-                    color: isSelected ? "transparent" : item.containsMouse ? FishUI.Theme.disabledTextColor : "transparent"
+-                    opacity: isSelected ? 1 : 0.1
+-                    radius: FishUI.Theme.smallRadius
++                Repeater {
++                    model: keyboard.layouts
++
++                    RowLayout {
++                        Layout.fillWidth: true
++                        spacing: FishUI.Units.smallSpacing
++
++                        Label {
++                            text: modelData.name
++                            elide: Text.ElideRight
++                            Layout.fillWidth: true
++                        }
++
++                        Button {
++                            text: "↑"
++                            enabled: index > 0
++                            onClicked: keyboard.moveLayout(index, index - 1)
++                        }
++
++                        Button {
++                            text: "↓"
++                            enabled: index < keyboard.layouts.length - 1
++                            onClicked: keyboard.moveLayout(index, index + 1)
++                        }
++
++                        Button {
++                            text: qsTr("Remove")
++                            enabled: keyboard.layouts.length > 1
++                            onClicked: keyboard.removeLayout(index)
++                        }
++                    }
+                 }
+ 
++                HorizontalDivider {}
++
+                 RowLayout {
+-                    anchors.fill: parent
+-                    anchors.leftMargin: FishUI.Units.smallSpacing
+-                    anchors.rightMargin: FishUI.Units.largeSpacing
++                    spacing: FishUI.Units.largeSpacing
+ 
+-                    Label {
+-                        color: isSelected ? FishUI.Theme.highlightedTextColor : FishUI.Theme.textColor
+-                        text: modelData
+-                        Layout.alignment: Qt.AlignVCenter
++                    ComboBox {
++                        id: layoutCombo
++                        Layout.fillWidth: true
++                        model: keyboard.availableLayouts
++                        textRole: "name"
+                     }
+ 
+-                    Item {
++                    ComboBox {
++                        id: variantCombo
+                         Layout.fillWidth: true
++                        model: layoutCombo.currentIndex >= 0
++                               ? keyboard.variants(keyboard.availableLayouts[layoutCombo.currentIndex].layout) : []
++                        textRole: "name"
++                    }
++
++                    Button {
++                        text: qsTr("Add")
++                        enabled: layoutCombo.currentIndex >= 0
++                        onClicked: keyboard.addLayout(keyboard.availableLayouts[layoutCombo.currentIndex].layout,
++                                                      variantCombo.currentIndex > 0 ? variantCombo.model[variantCombo.currentIndex].variant : "")
++                    }
++                }
++
++                RowLayout {
++                    spacing: FishUI.Units.largeSpacing
++
++                    Label {
++                        text: qsTr("Switch layouts with")
++                        Layout.preferredWidth: 150
+                     }
+ 
+-                    Image {
+-                        width: item.height * 0.45
+-                        height: width
+-                        sourceSize: Qt.size(width, height)
+-                        source: "qrc:/images/dark/checked.svg"
+-                        visible: isSelected
+-                        smooth: false
++                    ComboBox {
++                        Layout.fillWidth: true
++                        model: keyboard.switchShortcuts
++                        currentIndex: keyboard.switchShortcut
++                        onActivated: (index) => keyboard.switchShortcut = index
+                     }
+                 }
+             }
+diff --git a/src/qml/SideBar.qml b/src/qml/SideBar.qml
+index b590b3c..ae4b47f 100644
+--- a/src/qml/SideBar.qml
++++ b/src/qml/SideBar.qml
+@@ -234,7 +234,7 @@ Item {
+         }
+ 
+         ListElement {
+-            title: qsTr("Language")
++            title: qsTr("Region & Language")
+             name: "language"
+             page: "qrc:/qml/LanguagePage.qml"
+             iconSource: "language.svg"
+-- 
+2.43.0
+
