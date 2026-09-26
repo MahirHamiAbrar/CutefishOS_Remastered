@@ -65,9 +65,18 @@ sync_tree $WS/src/cutefish-framework $BUILD/src/cutefish-framework
 # Files a package must ship. A component skipped at configure time (a QUIET
 # find_package, say) still gives a package that installs fine (setback 33).
 declare -A must=(
-    [kwin-plugins]="/cutefish_roundedwindow.so"
+    [kwin-plugins]="/cutefish_roundedwindow.so|/org.cutefish.decoration.so"
     [calamares]="/usr/bin/calamares$"
 )
+
+# has_files "a|b" debs…: every |-separated pattern matches a file in the debs.
+has_files() {
+    local list pat; list=$(for d in "${@:2}"; do dpkg -c "$d"; done)
+    IFS='|' read -ra pats <<<"$1"
+    for pat in "${pats[@]}"; do
+        grep -q -- "$pat" <<<"$list" || { echo "no $pat in the debs"; return 1; }
+    done
+}
 
 fail=()
 for p in "$@"; do
@@ -89,8 +98,7 @@ for p in "$@"; do
          mk-build-deps -i -r -t "apt-get -y -q --no-install-recommends" debian/control &&
          rm -f ./*-build-deps_* &&
          dpkg-buildpackage -b -us -uc -j"$jobs" ${RESUME:+-nc} &&
-         { [[ -z ${must[$p]:-} ]] || for d in ../*.deb; do dpkg -c "$d"; done | grep -q "${must[$p]}" ||
-           { echo "no ${must[$p]} in the debs"; false; }; } &&
+         { [[ -z ${must[$p]:-} ]] || has_files "${must[$p]}" ../*.deb; } &&
          cp ../*.deb $OUT/repo/
        ) > "$log" 2>&1; then
         echo "    ok: $(cd $BUILD/src && ls *.deb | tr '\n' ' ')"

@@ -1,7 +1,7 @@
 From 74375b591e22b9de8932c1a09a0b619cd5341dfe Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:17:59 +0600
-Subject: [PATCH 3/4] Build the rounded-corners effect: libdrm-dev build
+Subject: [PATCH 3/5] Build the rounded-corners effect: libdrm-dev build
  dependency, KWin dev files required
 
 ---
