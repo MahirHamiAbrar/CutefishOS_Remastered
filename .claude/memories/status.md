@@ -13,7 +13,7 @@
 | cutefish-shell | 0.8+remastered4 | per-app notification block list (D-Bus `setAppBlocked`, `notification.conf Blocked=`) |
 | libcutefish (cutefish-framework) | 0.7+remastered3 | Accounts: name/picture changes announced after AccountsService applies them |
 
-Verified in the live session (see `docs/testing.md`, Session 7): everything in the table there. Settings 10, core 8 and framework 3 were built after the tests that found their bugs; they need one more install-and-check round (next-steps.md).
+Verified in the live session (see `docs/testing.md`, Session 7): everything in the table there. Settings 10, core 8 and framework 3 were then installed and rechecked: time zone Set applies Asia/Dhaka, the saved Performance mode is re-applied at login (4 × pkexec cutefish-cpufreq, no prompt), and opening Mouse keeps the pointer speed.
 Not verifiable in VirtualBox: the CPU governor itself (no cpufreq).
 
 # Earlier status (2026-09-27, session 6)

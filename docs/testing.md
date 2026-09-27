@@ -142,4 +142,4 @@ Live session of the session-6 ISO in VirtualBox (UEFI), with the new packages in
 | About | pass | System and Hardware sections; GPU "VMware SVGA II Adapter", model "innotek GmbH VirtualBox" |
 | Power | partial | Mode saved (`power.conf Mode=1`) and reported over D-Bus. VirtualBox has no cpufreq, so the governor itself can't be checked here |
 | Search, page switching | pass | Typing "blur" leaves Blur & Transparency; a cached page shows within 0.3 s |
-
+| Final build recheck | pass | settings remastered10, core remastered8, libcutefish remastered3: time zone Set gives `Asia/Dhaka`; after re-login the saved Performance mode ran `pkexec cutefish-cpufreq … performance` for all 4 CPUs; opening Mouse left the pointer speed at 0.4 |

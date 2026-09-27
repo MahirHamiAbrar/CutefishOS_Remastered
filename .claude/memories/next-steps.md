@@ -1,7 +1,7 @@
 # Next steps (priority order)
 
 ## Immediately next (session 7 left off here)
-1. Install settings remastered10, core remastered8, libcutefish remastered3 in the live VM (if not done at the end of session 7) and recheck: time zone Set, formats combo snapping back, User name updating in place, Mouse pointer speed untouched by opening the page.
+1. Not rechecked on the final build: the formats combo snapping back after a failure, and the User name updating in place (framework remastered3).
 2. Real hardware: check the power mode actually changes and persists the CPU governor (VirtualBox has no cpufreq).
 3. Mouse page lists only Adwaita: the Cutefish cursor themes install to `/usr/share/themes` (known issue below, ask the user first).
 4. The rest of `todo-next.md` (features: Settings shortcuts, KDE-style settings, Terminal settings buttons, clipboard manager, native title bars…) is not started.
