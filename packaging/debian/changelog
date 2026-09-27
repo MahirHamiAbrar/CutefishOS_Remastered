@@ -1,3 +1,9 @@
+cutefish-meta (26.04.10) resolute; urgency=medium
+
+  * cutefish-desktop: app list regenerated from iso-packages.yml.
+
+ -- Cutefish Remastered <remastered@localhost>  Mon, 28 Sep 2026 01:00:30 +0600
+
 cutefish-meta (26.04.9) resolute; urgency=medium
 
   * cutefish-desktop: depend on libc6-dev. Without recommends, gcc comes

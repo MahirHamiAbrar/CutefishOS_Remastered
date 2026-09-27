@@ -1,0 +1,43 @@
+# What goes into the Cutefish OS ISO. Read by scripts/build-all.sh.
+#
+# apps: our own packages. Each key is a build name (src/<key>, or kwin,
+#   calamares, netmonitor); the value is the binary package(s)
+#   cutefish-desktop depends on, comma separated, with an optional version.
+#   An empty value builds the package but leaves it out of cutefish-desktop
+#   (another meta package already pulls it in).
+# extra: other apps (Ubuntu, Mozilla) that cutefish-desktop depends on.
+#
+# build-all.sh writes both lists into packaging/debian/control (the block
+# between "# BEGIN iso-packages.yml" and "# END iso-packages.yml"), so
+# removing an app here removes it from the ISO. The base system and desktop
+# plumbing (sddm, pipewire, fonts, ...) stay in packaging/debian/control.
+# Keep to this flat format: "key: value" under apps, "- item" under extra.
+
+apps:
+  fishui: fishui
+  cutefish-framework: libcutefish
+  qt-plugins: cutefish-qt-plugins
+  filemanager: cutefish-filemanager
+  shell: cutefish-shell
+  core: cutefish-core
+  settings: cutefish-settings
+  terminal: cutefish-terminal
+  icons: cutefish-icon-theme
+  wallpapers: cutefish-wallpapers
+  sddm-theme: cutefish-sddm-theme
+  screenshot: cutefish-screenshot
+  calculator: cutefish-calculator
+  texteditor: cutefish-texteditor
+  gtk-themes: cutefish-gtk-themes
+  cursor-themes: cutefish-cursor-themes
+  plymouth-theme: cutefish-plymouth-theme
+  kwin: kwin-wayland (>= 4:6.6.6-0ubuntu0.1+cutefish3)
+  kwin-plugins: cutefish-kwin-plugins
+  netmonitor:            # via cutefish-privacy
+  calamares:             # via calamares-settings-cutefish (live ISO only)
+
+extra:
+  - firefox
+  - mpv
+  - ark
+  - curl

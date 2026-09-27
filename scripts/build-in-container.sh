@@ -13,6 +13,11 @@ ORDER="fishui cutefish-framework qt-plugins filemanager shell core settings term
 wallpapers sddm-theme screenshot calculator texteditor gtk-themes cursor-themes plymouth-theme
 netmonitor meta kwin kwin-plugins calamares"
 [[ $# -gt 0 ]] || set -- $ORDER
+# Build what was asked in ORDER (dependencies first), whatever order it came in.
+req=" $* " sorted=()
+for p in $ORDER; do [[ $req == *" $p "* ]] && sorted+=("$p"); done
+for p in $req; do [[ " $ORDER " == *" $p "* ]] || sorted+=("$p"); done
+set -- "${sorted[@]}"
 
 mem_gb=$(awk '/MemTotal/ {print int($2 / 1024 / 1024)}' /proc/meminfo)
 jobs=${JOBS:-$(( mem_gb * 2 / 3 > 0 ? mem_gb * 2 / 3 : 1 ))}

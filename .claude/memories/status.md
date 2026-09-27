@@ -1,3 +1,18 @@
+# Status (2026-09-28, session 8)
+
+## Session 8: one-command pipeline, iso-packages.yml, the skill
+- `scripts/build-all.sh`: build (local Docker, or `--modal`), ISO, live boot in the VM (`--vm-install` for a Calamares disk install). `--skip`, `--pkgs`; progress bar under the scrolling log.
+- `iso-packages.yml`: which apps are in the ISO. It is generated into cutefish-desktop's Depends; meta 26.04.10 is the first build from it (the only dependency change: kwin-wayland >= +cutefish3).
+- `scripts/vm.sh` absorbed the gitignored `build/vm/*.sh` helpers: `mouse`, `click`, `cursor`, `kwin`, `app`, `install-debs`, `calamares`, `wait-install`, `wait-desktop`, `dvd`, `disk`.
+- Project skill "Linux ISO Build and Debug": `.claude/skills/linux-iso-build-debug/`.
+
+Tested:
+- the vm step (live boot with a screenshot);
+- the Modal build step (meta);
+- the vm.sh mouse, click, cursor, kwin, app and install-debs subcommands on the live VM.
+
+See `docs/testing.md` "Session 8" for the ISO step and `--vm-install`.
+
 # Status (2026-09-27, session 7)
 
 `main` has the session-7 commits on GitHub. `.gitignore` and `todo-next.md` have uncommitted changes that are the user's; leave them.

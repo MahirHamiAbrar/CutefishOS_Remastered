@@ -8,6 +8,28 @@ Everything is built inside an Ubuntu 26.04 Docker container, so the host (Ubuntu
 docker build -t cutefish-builder docker/
 ```
 
+## All in one: `scripts/build-all.sh`
+
+```sh
+scripts/build-all.sh                              # build every app locally, build the ISO, boot it live in the VM
+scripts/build-all.sh --modal --pkgs "settings"    # build only settings, on Modal; then ISO and VM
+scripts/build-all.sh --skip build,vm              # ISO only, from the debs already in build/repo
+scripts/build-all.sh --skip build,iso --vm-install  # install the current ISO to a fresh VM disk and log in
+```
+
+Steps:
+- `build`: packages into `build/repo`.
+- `iso`: sections 3 below.
+- `vm`: live boot in `cutefish-efi` and a screenshot in `build/vm/shots/`.
+
+`--skip` takes a comma list in any order. The log scrolls above a progress bar and is saved to `build/logs/build-all-<time>.log`. The script starts and stops Docker Desktop and the VM as needed, since the two can't run together.
+
+### Which apps go into the ISO: `iso-packages.yml`
+- `apps` maps each of our build names to the binary package the desktop depends on. An empty value means built, but pulled in by another meta package.
+- `extra` lists other apps (Firefox, mpv, …).
+
+build-all.sh writes both lists into `cutefish-desktop`'s Depends (between `# BEGIN iso-packages.yml` and `# END iso-packages.yml` in `packaging/debian/control`) and bumps the meta version when they change. Removing an app from the yml removes it from the ISO. System pieces (sddm, pipewire, fonts, …) stay in the control file.
+
 ## 1. Get the sources
 
 ```sh
@@ -15,7 +37,7 @@ scripts/fetch.sh            # clone/checkout the pinned commits in repos.lock an
 scripts/fetch.sh --update   # move to the latest upstream commits instead (re-pins repos.lock)
 ```
 
-`fetch.sh` also downloads Ubuntu's `kwin` 4:6.6.6-0ubuntu0.1 source into `src/kwin-ubuntu`, applies `patches/kwin/*.patch`, registers them in `debian/patches/series` and bumps the version to `+cutefish2`.
+`fetch.sh` also downloads Ubuntu's `kwin` 4:6.6.6-0ubuntu0.1 source into `src/kwin-ubuntu`, applies `patches/kwin/*.patch`, registers them in `debian/patches/series` and bumps the version to `+cutefish3`.
 
 After `--update`, patches that no longer apply stop `git am`. Fix them in `src/<repo>`, then re-export them (see "Changing a package").
 

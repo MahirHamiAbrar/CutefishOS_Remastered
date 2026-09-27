@@ -10,7 +10,8 @@ patches/kwin/         cutefish-per-output-000{1..7}, cutefish-blur-000{1,2}
 netmonitor/           our own package (in git directly)
 packaging/            meta packages (source cutefish-meta) + calamares settings + files/ (in git directly)
 docker/               builder Dockerfile, openat2 shim for Modal
-scripts/              fetch.sh, build-debs.sh, build-in-container.sh, modal_build.py, build-iso.sh, vm.sh, test-spaces.sh, lib-commit.sh
+scripts/              build-all.sh, fetch.sh, build-debs.sh, build-in-container.sh, modal_build.py, build-iso.sh, vm.sh, test-spaces.sh, lib-commit.sh
+iso-packages.yml      which apps go in the ISO (read by build-all.sh)
 build/                gitignored: repo/ (debs + apt index), logs/, vm/ (VirtualBox VMs, shots/), the ISO
 docs/                 all documentation; setbacks.md and testing.md are living logs
 ```
@@ -32,17 +33,26 @@ KWin is different (and since session 7 it carries only the per-output backport; 
 - ISO: `scripts/build-iso.sh` (privileged Docker, about 25 min) → `build/cutefish-os-26.04-amd64.iso`. **Stop VirtualBox VMs first.** The ISO takes the highest version of each package in `build/repo`.
 - Docker Desktop: `systemctl --user start|stop docker-desktop`; wait for `docker info`.
 
-## Trying changes (the user's standard since 2026-09-27)
-No ISO rebuild for each change. Boot the **live ISO** in `cutefish-efi` (detach the disk first: EFI otherwise boots the installed system), copy the new debs in with `VBoxManage guestcontrol cutefish-efi copyto --username cutefish --password "" <abs path> /tmp/debs/`, `sudo dpkg -i --force-confold /tmp/debs/*.deb`, then `sudo systemctl restart sddm` and press Enter at the greeter (the live user has no password; restart has no autologin).
+## One command: `scripts/build-all.sh` (session 8)
+Builds the packages (local Docker by default, `--modal` for Modal), the ISO, and boots it live in `cutefish-efi`, with a progress bar under the scrolling log (`build/logs/build-all-<time>.log`).
+- `--skip build,iso,vm` skips steps.
+- `--pkgs "…"` limits the build.
+- `--vm-install` installs to a fresh disk with Calamares and logs in to the installed system. It **deletes the VM's old disk**.
 
-### A mouse for the agent (ydotool)
-- In the live session: `sudo apt-get install -y ydotool`, then `sudo setsid ydotoold --socket-path=/tmp/.ydotool_socket --socket-own=1000:1000 &`.
-- After every session start run `build/vm/pointer-setup.sh`: flat acceleration for the "ydotoold virtual device" (KWin D-Bus `InputDevice`), or moves are scaled.
-- `build/vm/click.sh X Y` clicks at display-0 pixels. It moves to the corner and then to X,Y as **separate** ydotool commands; `mousemove -a` sometimes got merged by libinput and landed elsewhere.
-- `build/vm/cursorpos.sh` prints KWin's cursor position; `build/vm/kwinq.sh 'JS'` evaluates a KWin-script expression (result via Space 2's name, restored).
-- `build/vm/settings.sh [page]` starts Settings through AppRuntime, inside the session. That matters for pkexec/polkit; `settings-log.sh` starts it from guest control with a log, and polkit calls fail there.
+`iso-packages.yml` decides which apps are in the ISO: build-all.sh writes it into cutefish-desktop's Depends (a marked block in `packaging/debian/control`) and bumps meta when it changes. The project skill `.claude/skills/linux-iso-build-debug/` describes the whole build/test/debug method.
+
+## Trying changes (the user's standard since 2026-09-27)
+No ISO rebuild for each change:
+1. `scripts/build-all.sh --skip build,iso` boots the current ISO live and waits for the desktop. It detaches the disk, since EFI otherwise boots the installed system; the path is kept in `build/vm/cutefish-efi/disk.path`, and `vm.sh disk efi attach` puts it back.
+2. `scripts/vm.sh install-debs efi <debs…>` copies the debs in, runs `dpkg -i --force-confold`, restarts sddm, and waits for the desktop. It logs in again if a greeter appears.
+
+### A mouse for the agent (ydotool), all in `scripts/vm.sh`
+- `vm.sh mouse efi`: `apt-get update` + install ydotool (the ISO has no apt lists), start `ydotoold`, and set flat acceleration on its KWin input device. Repeat it after every session start: without flat acceleration, moves are scaled.
+- `vm.sh click efi X Y` clicks at display-0 pixels. It moves to the corner and then to X,Y as **separate** ydotool commands; one `mousemove -a` sometimes got merged by libinput and landed elsewhere.
+- `vm.sh cursor efi` prints KWin's cursor position; `vm.sh kwin efi 'JS'` evaluates a KWin-script expression (the result goes through Space 2's name, then restored).
+- `vm.sh app efi cutefish-settings -m <page>` starts an app through AppRuntime, inside the session. That matters for pkexec/polkit: apps started from guest control directly fail polkit calls.
 - Wheel: `ydotool mousemove --wheel -x 0 -y -1` (repeat). Typing: `VBoxManage controlvm … keyboardputstring`.
-- Screenshots don't show the pointer; use `cursorpos.sh`.
+- Screenshots don't show the pointer; use `vm.sh cursor`.
 
 ## Modal
 - Use `modal run --detach …`: a network drop cancelled a non-detached run mid-KWin. Modal can also preempt the container (it restarts the function; ~15 min lost). The build logs to the volume, so the console stays quiet while compiling; `modal container exec <id> -- tail /vol/out/logs/<pkg>.log` shows progress.
@@ -64,12 +74,13 @@ No ISO rebuild for each change. Boot the **live ISO** in `cutefish-efi` (detach 
   - Alt+N (Calamares Next): `38 31 b1 b8`
   - Alt+I (Install): `38 17 97 b8`
 
-  Type text with `keyboardputstring`. There is **no mouse** injection.
+  Type text with `keyboardputstring`. Mouse: `vm.sh mouse`/`click` (ydotool, above).
 - `vm.sh displays efi 2|1` plugs or unplugs the second monitor. `scripts/test-spaces.sh efi` runs the per-display Spaces test.
-- Calamares by keyboard: `build/vm/cal-drive.sh <downs>` (gitignored; `FW=bios` for the BIOS VM). The argument is how many Down presses reach "Erase disk": 0 on an empty disk, 2 with an existing install.
+- Calamares by keyboard: `vm.sh calamares efi <downs>` then `vm.sh wait-install efi`. The argument is how many Down presses reach "Erase disk": 0 on an empty disk, 2 with an existing install. The account is "Test User" / `testu` / `cutefish123`.
 - Restart a session: `sudo systemctl restart sddm` (autologin on live; on installed systems, type the password and Enter). **Don't** use `loginctl terminate-user`.
 - The live system is non-persistent: a reboot loses anything installed by hand. To boot an installed disk, power off, `VBoxManage storageattach <vm> --storagectl SATA --port 1 --device 0 --type dvddrive --medium emptydrive`, then start.
-- Current VM state: `cutefish-efi` has the UEFI test install on its disk and no DVD. `cutefish-bios` has the BIOS test install and the final ISO attached. The NAT rule `fwtest` forwards host 127.0.0.1:18080 to guest port 8080.
+- Boot media: `vm.sh dvd efi iso|empty`, `vm.sh disk efi detach|attach [PATH]|fresh`.
+- Current VM state (2026-09-28): `cutefish-efi` boots the ISO live with no disk attached (the session-6 install is `build/vm/cutefish-efi/disk2.vdi`). `cutefish-bios` has the BIOS test install and the final ISO attached. The NAT rule `fwtest` forwards host 127.0.0.1:18080 to guest port 8080.
 - KWin scripts can't `print` to the journal visibly; publish results by renaming a Space (`workspace.desktops[i].name = …`) and read `org.kde.KWin /VirtualDesktopManager desktops`. Restore the name afterwards.
 
 ## Committing

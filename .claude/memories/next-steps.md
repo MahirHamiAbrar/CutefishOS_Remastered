@@ -1,5 +1,9 @@
 # Next steps (priority order)
 
+## Session 8 left
+- Use `scripts/build-all.sh` for builds; `vm.sh install-debs` to try debs in the live ISO.
+- The VM's session-6 install disk is detached: `scripts/vm.sh disk efi attach` puts it back. `--vm-install` replaces the disk with a fresh one and **deletes the old one**.
+
 ## Immediately next (session 7 left off here)
 1. Not rechecked on the final build: the formats combo snapping back after a failure, and the User name updating in place (framework remastered3).
 2. Real hardware: check the power mode actually changes and persists the CPU governor (VirtualBox has no cpufreq).
@@ -47,4 +51,4 @@ You are probably an agent started inside the installed or live Cutefish OS, on r
 
 ## Housekeeping
 - Delete the merged branches `claude/serene-volta-p3dnpo` and `claude/loving-turing-i1erb6` (ask the user first).
-- `build/vm/cal-drive.sh` and the other `build/vm/*.sh` helpers are gitignored scratch scripts. Promote `cal-drive.sh` into `scripts/` if installs get retested often.
+- The `build/vm/*.sh` helpers are now `scripts/vm.sh` subcommands (session 8).

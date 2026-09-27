@@ -83,6 +83,18 @@ The project started on 2026-09-25; everything below happened on 2026-09-25/26. S
 
 - 2026-09-27 (session 6, later): ISO builds failed on network drops (apt retries added), then on the fork pin (`Package: *` can't take a version pin, §35). The user asked to save mobile data, so build-iso.sh caches the apt downloads and the seeded skel. The skel seed needed libc6-dev, relative symlinks and an explicit treesitter install. The live session exposed Terminal still not starting (§36) and Neovim garbage in it (§37: DCS/APC strings, FBO rendering); fixed in fishui 5 and terminal 4. The Settings Default Applications page id was a duplicate of Date & Time's.
 
+## Session 8 (local, 2026-09-28): build pipeline and skill
+- The user asked for one script with a progress bar for build, debs, ISO and VM install, a yml listing the ISO's apps, and a skill capturing the workflow.
+- **User decisions:**
+  - "build apps" and "create debs" are one step; builds are local by default, `--modal` optional;
+  - the VM step boots live by default, and `--vm-install` does a disk install;
+  - the yml drives the meta package (removing an app removes it from the ISO).
+- Done: `scripts/build-all.sh`, `iso-packages.yml`, the vm.sh subcommands, and the skill `.claude/skills/linux-iso-build-debug/`.
+- Found while testing:
+  - `vm.sh shot` failed when the second display is off;
+  - the live ISO has no apt lists, so installing ydotool needs `apt-get update`;
+  - after `systemctl restart sddm`, the live session usually autologins, so there's no greeter to wait for.
+
 ## Session 7 (local, 2026-09-27): Settings bug sweep, blur as a plugin, mouse-driven tests
 - The user listed Settings bugs in `todo-next.md` (Bugs). All fixed; see §38 and `docs/testing.md` "Session 7".
 - **User decision:** our KWin changes should be modular. Blur moved out of KWin into our own effect `cutefish_blur` (`src/kwin-plugins/plugins/blur`, strength 1–20); KWin is `+cutefish3` with only the per-output backport. Per-app notifications list **all installed apps**.

@@ -2,7 +2,7 @@
 
 These notes give an agent new to this repository what earlier sessions (humans
 and Claude agents) did, decided, broke, fixed and left open. Read this file
-first, then the others as you need them. Last updated: 2026-09-27, session 7.
+first, then the others as you need them. Last updated: 2026-09-28, session 8.
 
 | File | What it holds |
 |---|---|
@@ -31,4 +31,5 @@ and `docs/` win.
 8. OpenSnitch `DefaultAction` stays **allow** (user's decision); the "connections pass while a prompt is open" gap is documented, not fixed.
 9. The user plans to run a Claude agent **inside the installed Cutefish OS** next. If that's you, see next-steps.md, "If you're running inside Cutefish OS".
 10. Test changes by booting the live ISO in the VM and `dpkg -i`-ing the debs (user's standard since session 7); `ydotool` gives the agent a mouse (workflow.md).
+12. One command builds, makes the ISO and boots it: `scripts/build-all.sh` (`--modal`, `--skip build,iso,vm`, `--pkgs`, `--vm-install`); `iso-packages.yml` lists the ISO's apps. The method is written up as the project skill `.claude/skills/linux-iso-build-debug/` ("Linux ISO Build and Debug").
 11. Never `pkill -f <pattern>` if the pattern appears in your own command line: it kills your own shell. Same trap with `pgrep -f` in wait loops.
