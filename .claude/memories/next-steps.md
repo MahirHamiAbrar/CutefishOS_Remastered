@@ -1,14 +1,10 @@
 # Next steps (priority order)
 
 ## Immediately next (session 6 left off here)
-1. The ISO with fishui 5, settings 8 and terminal 4 (`build/logs/iso-build14.txt`). Stop Docker, reattach the VM disk (`VBoxManage storageattach cutefish-efi --storagectl SATA --port 0 --device 0 --type hdd --medium build/vm/cutefish-efi/disk.vdi`; it was detached so the ISO boots) and install with `build/vm/cal-drive.sh`. Check:
-   - picking a time zone leaves the language and formats alone;
-   - `/etc/default/locale` is `en_US.UTF-8`;
-   - the installed user's shell is fish, with oh-my-fish and LazyVim.
-2. Ask the user to open Terminal → right click → Settings (no mouse here).
-3. Decide with the user whether LazyVim should stop reaching the network on start (lazy `checker`, Mason), which makes OpenSnitch prompt.
-4. Fix the cursor-theme install path (`src/cursor-themes/debian/install` → `/usr/share/icons/`). Ask the user first.
-5. Update `docs/testing.md`.
+The session-6 ISO is built and verified, live and installed (`docs/testing.md` rows 15–16). The VM now boots `build/vm/cutefish-efi/disk2.vdi` (a fresh install; the old `disk.vdi` is kept, detached).
+1. Ask the user to open Terminal → right click → Settings (no mouse here).
+2. Decide with the user whether LazyVim should stop reaching the network on start (lazy `checker`, Mason), which makes OpenSnitch prompt.
+3. Fix the cursor-theme install path (`src/cursor-themes/debian/install` → `/usr/share/icons/`). Ask the user first.
 
 ## If you're running inside Cutefish OS (the user's next plan)
 You are probably an agent started inside the installed or live Cutefish OS, on real hardware or in a VM.

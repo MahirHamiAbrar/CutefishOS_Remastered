@@ -40,6 +40,8 @@ The test VM has:
 | 12 | Screenshot | status bar → Control Centre → Screenshot | region select → saved to Desktop / clipboard |
 | 13 | Install | Calamares (opens automatically) → erase disk | installs, reboots into Cutefish; live packages removed; `ubuntu-drivers` step logged |
 | 14 | Installed system | log in, repeat 2–9 | same results |
+| 15 | Session 6 features | live session | Inter / JetBrains Mono (`fc-match`); fish + neolambda; `nvim` loads LazyVim with its treesitter parsers offline and draws correctly in Terminal; Blur & Transparency, Region & Language, Date & Time open with no QML warnings; opacity and corner radius change live |
+| 16 | Installer locale | install with the geoip time zone (Asia/Dhaka) | language and formats stay `en_US.UTF-8`; the time zone is Asia/Dhaka; the user's shell is fish with oh-my-fish and LazyVim |
 
 Results and the problems they turned up go into [setbacks.md](setbacks.md) and [known-issues.md](known-issues.md).
 
@@ -112,3 +114,12 @@ These ran in the Ubuntu 26.04 build container, not in a booted system. The VM ro
 | 14 | pass | Boots from disk, login works. `LANG=en_US.UTF-8` with `LC_TIME=bn_BD` (English UI, Bengali clock, §28); no failed units; opensnitch and the firewall active; the live installer rule and live packages are gone |
 
 **Final ISO** (meta 26.04.7, sha256 `e7b866a3…0950e`): booted in BIOS; the installer opens by itself, `hasInternet : true`, no requirement warnings.
+
+**Session 6 ISO** (fishui 5, settings 8, terminal 4, meta 26.04.9, sha256 `fa584137…ae32`), EFI VM:
+
+| # | Result | Notes |
+|---|---|---|
+| 6 | pass | Calculator's menu is in the status bar |
+| 15 | pass | Terminal first failed to load (§36) and Neovim drew garbage (§37); fixed and retested. Terminal's own Settings dialog needs a mouse click, not tested |
+| 16 | pass | Before the Calamares fork, the same install gave `LC_*=bn_BD` and a Bengali lock screen; now everything is `en_US.UTF-8` and the lock screen is English. The installer removes itself |
+
