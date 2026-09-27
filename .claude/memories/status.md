@@ -26,7 +26,7 @@ Not yet verified: Terminal and its Settings dialog after the FishUI fixes; the s
 Builder guards added this session:
 - a package must contain its key files (`must` in `scripts/build-in-container.sh`);
 - builds get a system-only PATH (Modal's Python 3.12 broke Calamares and `dh_qmldeps`);
-- the ISO bootstrap pins `+cutefish` versions of calamares/kwin/libkwin packages (`packaging/files/apt/cutefish-forks.pref`) and fails if `calamares` or `kwin-wayland` isn't ours;
+- the ISO bootstrap pins `+cutefish` versions of (lib)calamares/(lib)kwin packages (`packaging/files/apt/cutefish-forks.pref`) and fails if `calamares` or `kwin-wayland` isn't ours;
 - Calamares' source falls back to Launchpad.
 
 Developer guides for every repository under `src/` are in `docs/dev/` (+ generated API reference, `scripts/gen-dev-api.py`).

@@ -48,4 +48,4 @@ Ubuntu will publish `0ubuntu0.2` and later with security fixes. To follow:
 
 Two known risks:
 - **`apt-get source` needs the exact version in the archive.** Once Ubuntu supersedes `0ubuntu0.1`, `fetch.sh` can't recreate this tree. Keep a copy of `build/kwin-src/`. Calamares' fetch already falls back to Launchpad, which keeps every version, and the same could be done here.
-- **Ubuntu's newer KWin would win at ISO build time.** `scripts/build-iso.sh` pins the `+cutefish` versions of the `calamares*`, `kwin*` and `libkwin*` packages to priority 1001 during the bootstrap and fails if `kwin-wayland` isn't ours. On an installed system, `apt upgrade` would still replace our KWin with a newer Ubuntu one, so rebuild ours on every Ubuntu KWin update.
+- **Ubuntu's newer KWin would win at ISO build time.** `scripts/build-iso.sh` pins the `+cutefish` versions of the `calamares*`, `kwin*`, `libcalamares*` and `libkwin*` packages to priority 1001 during the bootstrap and fails if `kwin-wayland` isn't ours. On an installed system, `apt upgrade` would still replace our KWin with a newer Ubuntu one, so rebuild ours on every Ubuntu KWin update.
