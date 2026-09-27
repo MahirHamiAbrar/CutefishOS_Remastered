@@ -143,3 +143,16 @@ Live session of the session-6 ISO in VirtualBox (UEFI), with the new packages in
 | Power | partial | Mode saved (`power.conf Mode=1`) and reported over D-Bus. VirtualBox has no cpufreq, so the governor itself can't be checked here |
 | Search, page switching | pass | Typing "blur" leaves Blur & Transparency; a cached page shows within 0.3 s |
 | Final build recheck | pass | settings remastered10, core remastered8, libcutefish remastered3: time zone Set gives `Asia/Dhaka`; after re-login the saved Performance mode ran `pkexec cutefish-cpufreq … performance` for all 4 CPUs; opening Mouse left the pointer speed at 0.4 |
+
+## Session 8 (2026-09-28): scripts/build-all.sh
+
+| Check | Result |
+|---|---|
+| `--skip foo`, `--help` | rejects unknown steps (exit 2); help printed from the header |
+| Generated meta Depends vs meta 26.04.9 | identical except `kwin-wayland (>= …+cutefish3)` (was +cutefish2) |
+| `--modal --pkgs meta --skip iso,vm` | yml written into control, meta bumped to 26.04.10, built on Modal, debs checked (20 min, mostly Modal's log sync) |
+| `--skip build` (ISO + live VM) | Docker started (VM powered off first), ISO built in 10 min with the download cache, Docker stopped, live desktop up with cutefish-desktop 26.04.10 and kwin +cutefish3, screenshot saved |
+| `--skip build,iso --vm-install` | fresh disk, Calamares keyboard install finished, installed system booted to SDDM. The first run stopped at "no login screen": `pgrep -x sddm-greeter-qt6` never matches (15-char process names). Fixed; login as testu and desktop checked by hand with the same commands |
+| Progress bar | in a 120×30 pty: scroll region rows 1–29, bar on row 30, clock ticks every second, step and label follow the `>>>` markers |
+| `vm.sh mouse/click/cursor/kwin/app/install-debs` | all work on the live VM. Fixed on the way: `shot` failed with display 1 off; ydotool install needs `apt-get update` (the ISO has no apt lists); after `restart sddm` the live session autologins, so waiting for a greeter hung |
+

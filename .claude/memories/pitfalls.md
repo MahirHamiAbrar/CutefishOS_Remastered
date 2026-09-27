@@ -2,6 +2,7 @@
 
 ## Your own tooling
 - `pkill -f PATTERN` / `pgrep -f PATTERN` match your own shell command if it contains PATTERN. This killed the agent's shell twice (exit 144) and left wait loops spinning forever. Use `pkill -x <name>`, or a pattern that isn't in your own command.
+- `pgrep -x`/`pkill -x` match the kernel's 15-character process name: `sddm-greeter-qt6` is `sddm-greeter-qt`, `cutefish-settings` is `cutefish-settin`. A longer name never matches, so a wait loop on it hangs.
 - A heredoc inside a heredoc: a Python `<<'EOF'` script that itself contains `EOF` ends early. Use another delimiter (`PYEOF`).
 - `sleep N; …` chains longer than a few seconds get blocked by the harness. Use `until …; do sleep 10; done` with `run_in_background`, or a Monitor.
 - Modal aborts with "modified during build process" if files under the mounted dirs (`src/`, `netmonitor/`, `packaging/`, `scripts/`) change while it uploads.

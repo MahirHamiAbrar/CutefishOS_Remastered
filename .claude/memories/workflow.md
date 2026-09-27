@@ -80,7 +80,7 @@ No ISO rebuild for each change:
 - Restart a session: `sudo systemctl restart sddm` (autologin on live; on installed systems, type the password and Enter). **Don't** use `loginctl terminate-user`.
 - The live system is non-persistent: a reboot loses anything installed by hand. To boot an installed disk, power off, `VBoxManage storageattach <vm> --storagectl SATA --port 1 --device 0 --type dvddrive --medium emptydrive`, then start.
 - Boot media: `vm.sh dvd efi iso|empty`, `vm.sh disk efi detach|attach [PATH]|fresh`.
-- Current VM state (2026-09-28): `cutefish-efi` boots the ISO live with no disk attached (the session-6 install is `build/vm/cutefish-efi/disk2.vdi`). `cutefish-bios` has the BIOS test install and the final ISO attached. The NAT rule `fwtest` forwards host 127.0.0.1:18080 to guest port 8080.
+- Current VM state (2026-09-28): `cutefish-efi` runs a fresh install of the session-8 ISO (`build/vm/cutefish-efi/disk-20260928-013326.vdi`, testu/cutefish123), no DVD. The session-6 `disk2.vdi` was replaced by `--vm-install`; the older `disk.vdi` (session 5) is still there, detached. `cutefish-bios` has the BIOS test install and the final ISO attached. The NAT rule `fwtest` forwards host 127.0.0.1:18080 to guest port 8080.
 - KWin scripts can't `print` to the journal visibly; publish results by renaming a Space (`workspace.desktops[i].name = …`) and read `org.kde.KWin /VirtualDesktopManager desktops`. Restore the name afterwards.
 
 ## Committing

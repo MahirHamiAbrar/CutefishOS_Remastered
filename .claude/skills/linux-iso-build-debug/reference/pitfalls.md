@@ -4,6 +4,7 @@ The § numbers point to `docs/setbacks.md`. The full list, kept current, is in `
 
 ## Your own tooling
 - `pkill -f PAT` / `pgrep -f PAT` match your own shell when PAT is in its command line. That killed the agent's shell (exit 144) and left wait loops spinning forever. Use `pkill -x <name>`; Firefox's process is `firefox-bin`, Settings' is `cutefish-settin` (15 chars).
+- `pgrep -x`/`pkill -x` match the kernel's 15-character process name: `sddm-greeter-qt6` is `sddm-greeter-qt`, `cutefish-settings` is `cutefish-settin`. A longer name never matches, so a wait loop on it hangs.
 - A heredoc inside a heredoc ends early when both use `EOF`: use `PYEOF`/`JS` delimiters.
 - Long `sleep` chains get blocked. Wait with `until …; do sleep 5; done` in the background, or a Monitor.
 - A task stopped by TaskStop reports "failed"; that doesn't mean the work failed. Check the logs.

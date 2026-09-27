@@ -253,7 +253,7 @@ step_vm() {
     vm_do "booting the installed system" $vm start efi || fail "vm start"; vm_next
     what="waiting for the login screen"; say ">>> $what"
     local deadline=$(( SECONDS + 600 ))
-    until VM_USER=testu VM_PASS=cutefish123 $vm run efi /usr/bin/pgrep -x sddm-greeter-qt6 >/dev/null 2>&1; do
+    until VM_USER=testu VM_PASS=cutefish123 $vm run efi /usr/bin/pgrep -x sddm-greeter-qt >/dev/null 2>&1; do
         (( SECONDS < deadline )) || fail "no login screen"; sleep 5; draw
     done
     sleep 5

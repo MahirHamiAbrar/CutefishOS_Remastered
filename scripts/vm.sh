@@ -176,7 +176,7 @@ disk)
             VBoxManage closemedium disk "$old" --delete >/dev/null 2>&1 || rm -f "$old"
             echo "deleted $old"
         fi
-        path=$DIR/$VM/disk.vdi
+        path=$DIR/$VM/disk-$(date +%Y%m%d-%H%M%S).vdi
         VBoxManage createmedium disk --filename "$path" --size 30720 >/dev/null
         VBoxManage storageattach "$VM" --storagectl SATA --port 0 --device 0 --type hdd --medium "$path"
         echo "$path" > "$saved"
@@ -203,7 +203,7 @@ install-debs)
     deadline=$(( SECONDS + 240 )) typed=""
     until grun /usr/bin/pgrep -x cutefish-shell >/dev/null 2>&1; do
         (( SECONDS < deadline )) || { echo "no desktop after the restart" >&2; exit 1; }
-        if [[ -z $typed ]] && grun /usr/bin/pgrep -x sddm-greeter-qt6 >/dev/null 2>&1; then
+        if [[ -z $typed ]] && grun /usr/bin/pgrep -x sddm-greeter-qt >/dev/null 2>&1; then
             sleep 4
             [[ -n $VM_PASS ]] && VBoxManage controlvm "$VM" keyboardputstring "$VM_PASS"
             keys 1c 9c; typed=1

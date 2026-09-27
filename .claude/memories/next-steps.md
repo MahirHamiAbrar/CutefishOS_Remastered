@@ -2,7 +2,7 @@
 
 ## Session 8 left
 - Use `scripts/build-all.sh` for builds; `vm.sh install-debs` to try debs in the live ISO.
-- The VM's session-6 install disk is detached: `scripts/vm.sh disk efi attach` puts it back. `--vm-install` replaces the disk with a fresh one and **deletes the old one**.
+- The VM runs a fresh install of the session-8 ISO (testu / cutefish123). `--vm-install` replaces the disk with a fresh one and **deletes the old one**.
 
 ## Immediately next (session 7 left off here)
 1. Not rechecked on the final build: the formats combo snapping back after a failure, and the User name updating in place (framework remastered3).
