@@ -2,7 +2,9 @@
 # Seeds /etc/skel with oh-my-fish (neolambda theme) and LazyVim, so every new
 # user (the live user, the installer's user, adduser) starts with them,
 # offline. Runs inside the ISO chroot, which has network access.
-# Usage: seed-skel.sh <lazy-lock.json or ""> <where to copy a new lock>
+# Usage: seed-skel.sh <lazy-lock.json or ""> <where to copy a new lock> [plugin dir]
+# A plugin dir (a previous run's ~/.local/share/nvim/lazy) saves re-cloning:
+# lazy then only fetches what the lock changed.
 set -euo pipefail
 
 # Pinned upstreams (bump deliberately).
@@ -14,6 +16,7 @@ LAZYVIM_COMMIT=803bc181d7c0d6d5eeba9274d9be49b287294d99
 
 lock=${1:-}
 lock_out=${2:-}
+plugins=${3:-}
 work=$(mktemp -d)
 home=$work/home
 mkdir -p "$home"
@@ -38,6 +41,10 @@ git -C "$home/.local/share/omf/themes/neolambda" checkout -q "$NEOLAMBDA_COMMIT"
 echo "seed-skel: LazyVim"
 fetch "$LAZYVIM_REPO" "$LAZYVIM_COMMIT" "$home/.config/nvim"
 rm -rf "$home/.config/nvim/.git"
+if [ -n "$plugins" ] && [ -d "$plugins" ]; then
+    mkdir -p "$home/.local/share/nvim"
+    cp -a "$plugins" "$home/.local/share/nvim/lazy"
+fi
 if [ -n "$lock" ] && [ -f "$lock" ]; then
     cp "$lock" "$home/.config/nvim/lazy-lock.json"
     nvim --headless "+Lazy! restore" +qa
@@ -52,6 +59,12 @@ timeout 600 nvim --headless "+sleep 240" +qa || echo "seed-skel: nvim warm-up ti
 # Mason's tools are wired up with absolute paths (symlinks into this home):
 # leave them to the first start, which needs network anyway for updates.
 rm -rf "$home/.local/share/nvim/mason"
+
+# omf's prompt and nvim-treesitter's queries are absolute symlinks into this
+# home; everything they point at is copied too, so make them relative.
+find "$home/.config" "$home/.local/share" -type l -lname "$home/*" | while read -r l; do
+    ln -sfnr "$(readlink "$l")" "$l"
+done
 
 # Nothing that is copied may point at the throwaway home.
 seeded=("$home/.config/fish" "$home/.config/omf" "$home/.config/nvim"

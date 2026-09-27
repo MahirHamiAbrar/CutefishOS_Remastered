@@ -32,11 +32,33 @@ mkdir -p "$WORK" "$IMAGE"/{casper,boot/grub,EFI/boot,.disk,pool}
 setup_hook='mkdir -p "$1/etc/apt/preferences.d" && cp /ws/packaging/files/apt/mozilla.pref "$1/etc/apt/preferences.d/mozilla" &&
     cp /ws/packaging/files/apt/cutefish-forks.pref "$1/etc/apt/preferences.d/cutefish-forks"'
 
+# Download cache (build/cache/apt): the .debs and package lists of the last
+# build are loaded before apt runs, so a rebuild fetches only what changed.
+# Our own packages are never cached: a rebuild may reuse a version number.
+export APT_CACHE=/ws/build/cache/apt
+mkdir -p "$APT_CACHE/archives" "$APT_CACHE/lists"
+awk '/^Package:/{p=$2} /^Version:/{v=$2; gsub(":","%3a",v)} /^Architecture:/{print p"_"v"_"$2".deb"}' \
+    /ws/build/repo/Packages > /tmp/own-debs
+cache_in='mkdir -p "$1/var/cache/apt/archives" "$1/var/lib/apt/lists" &&
+    cp -a "$APT_CACHE/archives/." "$1/var/cache/apt/archives/" &&
+    cp -a "$APT_CACHE/lists/." "$1/var/lib/apt/lists/"'
+# Only the .debs of installed packages are kept, so old versions don't pile
+# up. (apt-get autoclean can't run here: cutefish-desktop's Mozilla source
+# conflicts with the bootstrap's.)
+cache_out='new="$APT_CACHE.new" && rm -rf "$new" && mkdir -p "$new/archives" "$new/lists" &&
+    chroot "$1" dpkg-query -W -f "\${Package}_\${Version}_\${Architecture}.deb\n" | sed "s/:/%3a/" |
+        grep -vxFf /tmp/own-debs | (cd "$1/var/cache/apt/archives" &&
+        while read -r f; do [ ! -f "$f" ] || cp -a "$f" "$new/archives/"; done) &&
+    find "$1/var/lib/apt/lists" -maxdepth 1 -type f ! -name lock -exec cp -a -t "$new/lists/" {} + &&
+    rm -rf "$APT_CACHE" && mv "$new" "$APT_CACHE" &&
+    chown -R "$HOST_UID:$HOST_GID" /ws/build/cache'
+
 echo ">>> bootstrapping root filesystem"
 mmdebstrap --mode=root --variant=minbase \
     --aptopt='APT::Install-Recommends "false"' \
     --aptopt='Acquire::Retries "10"' \
-    --setup-hook="$setup_hook" \
+    --skip=download/empty --skip=essential/unlink \
+    --setup-hook="$setup_hook" --setup-hook="$cache_in" --customize-hook="$cache_out" \
     --include="ubuntu-minimal,systemd-sysv,sudo,locales,language-pack-en,ca-certificates,
 bash-completion,nano,less,initramfs-tools,plymouth,plymouth-label,casper,
 grub-pc,grub-efi-amd64-signed,shim-signed,efibootmgr,os-prober,
@@ -86,23 +108,47 @@ sed -i 's/^# *\(en_US.UTF-8\)/\1/' "$ROOT/etc/locale.gen"
 
 mount --bind /dev "$ROOT/dev"; mount -t proc proc "$ROOT/proc"; mount -t sysfs sys "$ROOT/sys"
 trap 'umount -lf "$ROOT/dev" "$ROOT/proc" "$ROOT/sys" 2>/dev/null || true' EXIT
-# oh-my-fish (neolambda) and LazyVim for every new user, fetched now so the
-# installed system has them offline. The chroot needs a working resolver.
 echo ">>> seeding /etc/skel"
-mv "$ROOT/etc/resolv.conf" "$ROOT/etc/resolv.conf.iso" 2>/dev/null || true
-cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
-cp /ws/packaging/files/skel/seed-skel.sh "$ROOT/tmp/"
+# Cached in build/cache/skel/<key>.tar. The key covers everything that decides
+# the result: the seed script (with its pinned commits), the plugin lock and
+# the neovim/fish versions the parsers were built with.
+SKEL_CACHE=/ws/build/cache/skel
+LAZY_CACHE=/ws/build/cache/nvim-lazy.tar  # plugin clones, reused when the key changes
+skel_dirs=(.config/fish .config/omf .config/nvim .local/share/omf .local/share/nvim)
+vers=$(chroot "$ROOT" dpkg-query -W -f '${Package}=${Version} ' neovim fish)
+skel_key() { { cat /ws/packaging/files/skel/seed-skel.sh "$1"; echo "$vers"; } | sha256sum | cut -c1-16; }
 lock=""
 if [[ -f /ws/packaging/files/skel/lazy-lock.json ]]; then
     cp /ws/packaging/files/skel/lazy-lock.json "$ROOT/tmp/lazy-lock.json"; lock=/tmp/lazy-lock.json
 fi
-chroot "$ROOT" /tmp/seed-skel.sh "$lock" /tmp/lazy-lock.new.json 2>&1 | tee /ws/build/logs/iso-skel.log
-[[ ${PIPESTATUS[0]} -eq 0 ]] || { echo "seeding /etc/skel failed, see build/logs/iso-skel.log" >&2; exit 1; }
-# First build without a pinned lock: keep the one it made, to commit as
-# packaging/files/skel/lazy-lock.json.
-[[ -f $ROOT/tmp/lazy-lock.new.json ]] && cp "$ROOT/tmp/lazy-lock.new.json" /ws/build/lazy-lock.json
-rm -f "$ROOT/etc/resolv.conf"
-mv "$ROOT/etc/resolv.conf.iso" "$ROOT/etc/resolv.conf" 2>/dev/null || true
+cached=""
+[[ -n $lock ]] && cached=$SKEL_CACHE/$(skel_key "$ROOT$lock").tar
+if [[ -n $cached && -f $cached ]]; then
+    echo "seed-skel: from cache $(basename "$cached")" | tee /ws/build/logs/iso-skel.log
+    tar -xf "$cached" --numeric-owner -C "$ROOT/etc/skel"
+else
+    # oh-my-fish (neolambda) and LazyVim for every new user, fetched now so the
+    # installed system has them offline. The chroot needs a working resolver.
+    mv "$ROOT/etc/resolv.conf" "$ROOT/etc/resolv.conf.iso" 2>/dev/null || true
+    cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
+    cp /ws/packaging/files/skel/seed-skel.sh "$ROOT/tmp/"
+    plugins=""
+    if [[ -f $LAZY_CACHE ]]; then
+        tar -xf "$LAZY_CACHE" --numeric-owner -C "$ROOT/tmp"; plugins=/tmp/lazy
+    fi
+    chroot "$ROOT" /tmp/seed-skel.sh "$lock" /tmp/lazy-lock.new.json $plugins 2>&1 | tee /ws/build/logs/iso-skel.log
+    [[ ${PIPESTATUS[0]} -eq 0 ]] || { echo "seeding /etc/skel failed, see build/logs/iso-skel.log" >&2; exit 1; }
+    rm -f "$ROOT/etc/resolv.conf"
+    mv "$ROOT/etc/resolv.conf.iso" "$ROOT/etc/resolv.conf" 2>/dev/null || true
+    # First build without a pinned lock: keep the one it made, to commit as
+    # packaging/files/skel/lazy-lock.json (the cache is keyed on it already).
+    [[ -f $ROOT/tmp/lazy-lock.new.json ]] && cp "$ROOT/tmp/lazy-lock.new.json" /ws/build/lazy-lock.json
+    used=${lock:-/tmp/lazy-lock.new.json}
+    mkdir -p "$SKEL_CACHE"; rm -f "$SKEL_CACHE"/*.tar
+    tar -cf "$SKEL_CACHE/$(skel_key "$ROOT$used").tar" --numeric-owner -C "$ROOT/etc/skel" "${skel_dirs[@]}"
+    tar -cf "$LAZY_CACHE" --numeric-owner -C "$ROOT/etc/skel/.local/share/nvim" lazy
+    chown -R "$HOST_UID:$HOST_GID" /ws/build/cache
+fi
 
 chroot "$ROOT" /bin/bash -e <<'CHROOT'
 locale-gen >/dev/null

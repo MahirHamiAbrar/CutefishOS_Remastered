@@ -1,3 +1,11 @@
+cutefish-meta (26.04.9) resolute; urgency=medium
+
+  * cutefish-desktop: depend on libc6-dev. Without recommends, gcc comes
+    without the C headers, and LazyVim's treesitter parsers failed to
+    compile ("stdint.h: No such file or directory").
+
+ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 14:00:00 +0600
+
 cutefish-meta (26.04.8) resolute; urgency=medium
 
   * cutefish-desktop: Inter, JetBrains Mono and Fantasque Sans Mono as the

@@ -28,7 +28,7 @@ Depends: ${misc:Depends},
 # fish as the default shell (oh-my-fish + neolambda seeded in /etc/skel)
          fish,
 # Neovim with LazyVim (seeded in /etc/skel) and what LazyVim needs
-         neovim, git, ripgrep, fd-find, unzip, gcc, make, tree-sitter-cli,
+         neovim, git, ripgrep, fd-find, unzip, gcc, libc6-dev, make, tree-sitter-cli,
          appmenu-gtk3-module, qt6-svg-plugins, breeze-icon-theme, milou,
 # Everyday apps (Firefox from Mozilla's APT repository, no snap)
          firefox, mpv, ark, curl
