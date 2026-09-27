@@ -71,7 +71,7 @@ sync_tree $WS/src/cutefish-framework $BUILD/src/cutefish-framework
 # Files a package must ship. A component skipped at configure time (a QUIET
 # find_package, say) still gives a package that installs fine (setback 33).
 declare -A must=(
-    [kwin-plugins]="/cutefish_roundedwindow.so|/org.cutefish.decoration.so"
+    [kwin-plugins]="/cutefish_roundedwindow.so|/cutefish_blur.so|/org.cutefish.decoration.so"
     [calamares]="/usr/bin/calamares$"
 )
 

@@ -63,9 +63,10 @@ if [[ ! -d src/kwin-ubuntu/debian ]]; then
          cp "$p" debian/patches/; n=$(basename "$p")
          echo "$n" >> debian/patches/series; echo "$n" >> .pc/applied-patches
      done
-     { echo "kwin (4:6.6.6-0ubuntu0.1+cutefish2) resolute; urgency=medium"; echo
-       echo "  * Backport per-output virtual desktops (KWin MR !8602, Plasma 6.7)."
-       echo "  * blur: ForceBlurClasses option for per-app blur, at full blur strength."; echo
+     # Blur is not patched here any more: it's the cutefish_blur effect in
+     # kwin-plugins, so a new KWin only needs that plugin rebuilt.
+     { echo "kwin (4:6.6.6-0ubuntu0.1+cutefish3) resolute; urgency=medium"; echo
+       echo "  * Backport per-output virtual desktops (KWin MR !8602, Plasma 6.7)."; echo
        echo " -- Cutefish Remastered <remastered@localhost>  $(date -R)"; echo
        cat debian/changelog; } > debian/changelog.new && mv debian/changelog.new debian/changelog
      git add -A && git -c user.name=r -c user.email=r@l commit -qm "debian: register cutefish patches")

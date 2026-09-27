@@ -1,7 +1,7 @@
 From 7a83a1f2efb2c66b3dde09dae3c6f8afad5a15f8 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Fri, 25 Sep 2026 19:44:38 +0000
-Subject: [PATCH 2/2] Launcher: open on the display under the pointer
+Subject: [PATCH 2/3] Launcher: open on the display under the pointer
 
 KWin moves its active output with the pointer and publishes its name
 (org.kde.KWin.activeOutputName), which a Wayland client can't get any

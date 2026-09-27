@@ -1,7 +1,7 @@
 From 8b11e42d3c1102648470feeaf84fb8805ce8fc51 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sat, 26 Sep 2026 18:23:31 +0600
-Subject: [PATCH 3/6] Bluetooth: say when there is no adapter instead of
+Subject: [PATCH 3/7] Bluetooth: say when there is no adapter instead of
  showing the switch on
 
 ---

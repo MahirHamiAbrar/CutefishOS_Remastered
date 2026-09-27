@@ -1,0 +1,1824 @@
+From 466ecee5db90b86ba18c2a9c8fefb838848a6db9 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 20:50:05 +0600
+Subject: [PATCH 7/7] Fix Background, Mouse and User layouts; per-app
+ notifications; time zone picks the nearest city; formats never stuck; icon
+ buttons for keyboard layouts; battery health bar; About sections; sidebar
+ search; cached, animated pages; blur controls for cutefish_blur (strength
+ 1-20, saturation)
+
+---
+ debian/changelog                    |   6 ++
+ src/about.cpp                       |  42 +++++++++-
+ src/about.h                         |   4 +
+ src/datetime/timezonemap.cpp        |  19 +++--
+ src/language.cpp                    |  28 ++++++-
+ src/language.h                      |   3 +-
+ src/notifications.cpp               |  51 ++++++++++++
+ src/notifications.h                 |   9 +++
+ src/qml/About/Main.qml              |  56 ++++++++++++-
+ src/qml/Battery/Main.qml            | 121 ++++++++++++++--------------
+ src/qml/Blur/Main.qml               |  18 ++++-
+ src/qml/Cursor/Main.qml             |  17 ++--
+ src/qml/DateTime/TimeZoneDialog.qml |  17 ++--
+ src/qml/HorizontalDivider.qml       |   2 +-
+ src/qml/LanguagePage.qml            |  67 ++++++++++++---
+ src/qml/Notification/Main.qml       |  47 +++++++++++
+ src/qml/SideBar.qml                 | 107 ++++++++++++++++++++++--
+ src/qml/StandardItem.qml            |   5 +-
+ src/qml/User/Main.qml               |   8 +-
+ src/qml/User/UserDelegateItem.qml   |  63 ++++++++++++---
+ src/qml/Wallpaper/Main.qml          |  15 ++--
+ src/qml/main.qml                    |  61 +++++++++++---
+ src/windoweffects.cpp               |  73 +++++++++++++----
+ src/windoweffects.h                 |   6 ++
+ 24 files changed, 684 insertions(+), 161 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 5ec2a5c..9edea72 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-settings (0.8+remastered9) resolute; urgency=medium
++
++  * Fix Background, Mouse and User layouts; per-app notifications; time zone picks the nearest city; formats never stuck; icon buttons for keyboard layouts; battery health bar; About sections; sidebar search; cached, animated pages; blur controls for cutefish_blur (strength 1-20, saturation)
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 20:50:05 +0600
++
+ cutefish-settings (0.8+remastered8) resolute; urgency=medium
+ 
+   * Default Applications page id was a copy of Date & Time's (-m datetime opened the wrong page); keyboard layout picker skips xkb's 'custom' placeholder
+diff --git a/src/about.cpp b/src/about.cpp
+index 8b1c21c..cd6c92c 100644
+--- a/src/about.cpp
++++ b/src/about.cpp
+@@ -156,6 +156,46 @@ QString About::internalStorage()
+             .arg(formatByteSize(storage.bytesTotal(), 0));
+ }
+ 
++QString About::gpuInfo()
++{
++    // lspci -mm: slot "class" "vendor" "device" ...
++    QProcess process;
++    process.start(QStringLiteral("lspci"), {QStringLiteral("-mm")});
++    if (!process.waitForFinished(2000))
++        return QString();
++
++    static const QRegularExpression field(QStringLiteral("\"([^\"]*)\""));
++    QStringList gpus;
++    const QStringList lines = QString::fromUtf8(process.readAllStandardOutput()).split('\n');
++    for (const QString &line : lines) {
++        QStringList fields;
++        for (auto it = field.globalMatch(line); it.hasNext();)
++            fields << it.next().captured(1);
++        if (fields.size() < 3)
++            continue;
++        const QString &cls = fields.at(0);
++        if (!cls.contains(QLatin1String("VGA")) && !cls.contains(QLatin1String("3D")) && !cls.contains(QLatin1String("Display")))
++            continue;
++        QString vendor = fields.at(1);
++        vendor.remove(QLatin1String(" Corporation")).remove(QLatin1String(", Inc.")).remove(QLatin1String(" Inc."));
++        gpus << vendor + QLatin1Char(' ') + fields.at(2);
++    }
++    return gpus.join(QStringLiteral(", "));
++}
++
++QString About::deviceModel()
++{
++    auto read = [](const char *name) {
++        QFile file(QStringLiteral("/sys/class/dmi/id/") + QLatin1String(name));
++        return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).trimmed() : QString();
++    };
++    const QString vendor = read("sys_vendor");
++    const QString product = read("product_name");
++    if (product.isEmpty() || product.startsWith(vendor))
++        return product.isEmpty() ? vendor : product;
++    return vendor + QLatin1Char(' ') + product;
++}
++
+ QString About::cpuInfo()
+ {
+     QFile file("/proc/cpuinfo");
+@@ -171,7 +211,7 @@ QString About::cpuInfo()
+         int count = lines.filter(QRegularExpression("^processor")).count();
+ 
+         QString result;
+-        result.append(modelLine.first().split(':').at(1));
++        result.append(modelLine.first().section(QLatin1Char(':'), 1).trimmed());
+ 
+         if (count > 0)
+             result.append(QString(" x %1").arg(count));
+diff --git a/src/about.h b/src/about.h
+index f6d975f..a2b7214 100644
+--- a/src/about.h
++++ b/src/about.h
+@@ -39,6 +39,8 @@ class About : public QObject
+     Q_PROPERTY(QString prettyProductName READ prettyProductName CONSTANT)
+     Q_PROPERTY(QString internalStorage READ internalStorage CONSTANT)
+     Q_PROPERTY(QString cpuInfo READ cpuInfo CONSTANT)
++    Q_PROPERTY(QString gpuInfo READ gpuInfo CONSTANT)
++    Q_PROPERTY(QString deviceModel READ deviceModel CONSTANT)
+ 
+ public:
+     explicit About(QObject *parent = nullptr);
+@@ -58,6 +60,8 @@ public:
+     QString prettyProductName();
+     QString internalStorage();
+     QString cpuInfo();
++    QString gpuInfo();
++    QString deviceModel();
+ 
+     Q_INVOKABLE void openUpdator();
+ 
+diff --git a/src/datetime/timezonemap.cpp b/src/datetime/timezonemap.cpp
+index 7db32de..1dd0972 100644
+--- a/src/datetime/timezonemap.cpp
++++ b/src/datetime/timezonemap.cpp
+@@ -86,7 +86,7 @@ void TimeZoneMap::clicked(int x, int y, int width, int height)
+     double minimum_distance = width * width + height * height;
+     int nearest_zone_index = -1;
+ 
+-    QList<TimeZoneItem *> items;
++    QList<QPair<double, TimeZoneItem *>> items;
+ 
+     for (int i = 0; i < m_list.size(); ++i) {
+         TimeZoneItem *item = m_list.at(i);
+@@ -102,21 +102,26 @@ void TimeZoneMap::clicked(int x, int y, int width, int height)
+         }
+ 
+         if (distance <= 20) {
+-            items << item;
++            items.append({distance, item});
+         }
+     }
+ 
+     if (items.isEmpty() && nearest_zone_index != -1) {
+-        items.append(m_list.at(nearest_zone_index));
++        items.append({minimum_distance, m_list.at(nearest_zone_index)});
+     }
+ 
++    // Nearest first: the dialog shows and sets the first entry. (This list
++    // used to be sorted by name, so a click picked the alphabetically first
++    // city nearby.)
++    std::sort(items.begin(), items.end(), [](const auto &a, const auto &b) {
++        return a.first < b.first;
++    });
++
+     m_currentList.clear();
+-    for (TimeZoneItem *item : items) {
+-        m_currentList.append(item->timeZone);
++    for (const auto &entry : items) {
++        m_currentList.append(entry.second->timeZone);
+     }
+ 
+-    std::sort(m_currentList.begin(), m_currentList.end());
+-
+     emit availableListChanged();
+ }
+ 
+diff --git a/src/language.cpp b/src/language.cpp
+index 41115ed..ef9a079 100644
+--- a/src/language.cpp
++++ b/src/language.cpp
+@@ -27,6 +27,7 @@
+ #include <QFile>
+ #include <QProcess>
+ #include <QSettings>
++#include <QTimer>
+ 
+ #include <unicode/locid.h>
+ #include <unicode/unistr.h>
+@@ -131,7 +132,7 @@ void Language::loadFormats()
+ 
+ QString Language::formatsPreview() const
+ {
+-    QString code = m_formatCodes.value(m_currentFormats);
++    QString code = m_formatCodes.value(m_formatsBusy ? m_pendingFormats : m_currentFormats);
+     if (code.isEmpty())
+         code = m_languageCodes.value(m_currentLanguage, QStringLiteral("en_US"));
+     const QLocale locale(code);
+@@ -152,21 +153,40 @@ void Language::setCurrentFormats(int index)
+         return;
+     }
+ 
+-    // Not generated yet: glibc would silently fall back to "C".
++    // Not generated yet: glibc would silently fall back to "C". pkexec asks
++    // for the password; a failed start or an unanswered prompt used to leave
++    // the page on "Preparing the formats…" for good.
+     m_formatsBusy = true;
++    m_pendingFormats = index;
+     emit formatsBusyChanged();
++    emit currentFormatsChanged(); // the preview shows the new formats already
+     auto *process = new QProcess(this);
+-    connect(process, &QProcess::finished, this, [this, process, index, code](int exitCode, QProcess::ExitStatus status) {
++    auto finish = [this, process, index, code](bool ok) {
++        if (!m_formatsBusy || m_pendingFormats != index)
++            return; // already handled (error after finished, or timeout)
++        process->disconnect(this);
+         process->deleteLater();
+         m_formatsBusy = false;
++        m_pendingFormats = -1;
+         emit formatsBusyChanged();
+-        if (status == QProcess::NormalExit && exitCode == 0) {
++        if (ok) {
+             m_generatedLocales.insert(code);
+             saveFormats(index);
+         } else {
+             emit currentFormatsChanged(); // puts the combo box back
+             emit formatsFailed(tr("Could not generate the %1 locale.").arg(code));
+         }
++    };
++    connect(process, &QProcess::finished, this, [finish](int exitCode, QProcess::ExitStatus status) {
++        finish(status == QProcess::NormalExit && exitCode == 0);
++    });
++    connect(process, &QProcess::errorOccurred, this, [finish](QProcess::ProcessError error) {
++        if (error == QProcess::FailedToStart)
++            finish(false);
++    });
++    QTimer::singleShot(180 * 1000, process, [process, finish] {
++        process->kill();
++        finish(false);
+     });
+     process->start(QStringLiteral("pkexec"), { QStringLiteral("/usr/sbin/locale-gen"), code + QStringLiteral(".UTF-8") });
+ }
+diff --git a/src/language.h b/src/language.h
+index 2924158..c3c0200 100644
+--- a/src/language.h
++++ b/src/language.h
+@@ -45,7 +45,7 @@ public:
+     QStringList languages() const;
+ 
+     QStringList formats() const { return m_formatNames; }
+-    int currentFormats() const { return m_currentFormats; }
++    int currentFormats() const { return m_formatsBusy ? m_pendingFormats : m_currentFormats; }
+     QString formatsPreview() const;
+     bool formatsBusy() const { return m_formatsBusy; }
+     //! Generates the locale first if needed (asks for the admin password).
+@@ -70,6 +70,7 @@ private:
+     QStringList m_formatCodes;
+     QSet<QString> m_generatedLocales;
+     int m_currentFormats = 0;
++    int m_pendingFormats = -1; // shown in the preview while it's being generated
+     bool m_formatsBusy = false;
+ };
+ 
+diff --git a/src/notifications.cpp b/src/notifications.cpp
+index 59b34bb..6adc13d 100644
+--- a/src/notifications.cpp
++++ b/src/notifications.cpp
+@@ -18,6 +18,18 @@
+  */
+ 
+ #include "notifications.h"
++#include "applicationregistry.h"
++#include "desktopentry.h"
++
++#include <QFileInfo>
++
++#include <algorithm>
++
++//! The key the shell matches against the desktop-entry hint.
++static QString appKey(const DesktopEntry *entry)
++{
++    return QFileInfo(entry->id()).completeBaseName().toLower();
++}
+ 
+ Notifications::Notifications(QObject *parent)
+     : QObject(parent)
+@@ -31,6 +43,45 @@ Notifications::Notifications(QObject *parent)
+                                           "/Notification",
+                                           "com.cutefish.Notification",
+                                           "doNotDisturbChanged", this, SLOT(onDBusDoNotDisturbChanged()));
++    QDBusConnection::sessionBus().connect("com.cutefish.Notification",
++                                          "/Notification",
++                                          "com.cutefish.Notification",
++                                          "blockedAppsChanged", this, SLOT(onDBusBlockedAppsChanged()));
++    m_blocked = m_iface.property("blockedApps").toStringList();
++
++    connect(ApplicationRegistry::instance(), &ApplicationRegistry::applicationsChanged,
++            this, &Notifications::appsChanged);
++}
++
++QVariantList Notifications::apps() const
++{
++    QVariantList apps;
++    for (DesktopEntry *entry : ApplicationRegistry::instance()->applicationEntries()) {
++        if (!entry->shouldShow())
++            continue;
++        const QString id = appKey(entry);
++        apps << QVariantMap{{"id", id}, {"name", entry->name()}, {"icon", entry->icon()},
++                            {"blocked", m_blocked.contains(id)}};
++    }
++    std::sort(apps.begin(), apps.end(), [](const QVariant &a, const QVariant &b) {
++        return a.toMap().value("name").toString().localeAwareCompare(b.toMap().value("name").toString()) < 0;
++    });
++    return apps;
++}
++
++void Notifications::setAppBlocked(const QString &id, const QString &name, bool blocked)
++{
++    // Senders that give no desktop-entry hint are only known by the name
++    // they pass as app_name, usually the app's display name.
++    m_iface.asyncCall("setAppBlocked", id, blocked);
++    if (!name.isEmpty() && name.toLower() != id)
++        m_iface.asyncCall("setAppBlocked", name, blocked);
++}
++
++void Notifications::onDBusBlockedAppsChanged()
++{
++    m_blocked = m_iface.property("blockedApps").toStringList();
++    emit appsChanged();
+ }
+ 
+ bool Notifications::doNotDisturb() const
+diff --git a/src/notifications.h b/src/notifications.h
+index 9ea984f..48668bf 100644
+--- a/src/notifications.h
++++ b/src/notifications.h
+@@ -23,11 +23,14 @@
+ #include <QObject>
+ #include <QDBusInterface>
+ #include <QDBusPendingCall>
++#include <QVariantList>
+ 
+ class Notifications : public QObject
+ {
+     Q_OBJECT
+     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
++    //! Installed apps: [{ id, name, icon, blocked }], sorted by name.
++    Q_PROPERTY(QVariantList apps READ apps NOTIFY appsChanged)
+ 
+ public:
+     explicit Notifications(QObject *parent = nullptr);
+@@ -35,15 +38,21 @@ public:
+     bool doNotDisturb() const;
+     void setDoNotDisturb(bool enabled);
+ 
++    QVariantList apps() const;
++    Q_INVOKABLE void setAppBlocked(const QString &id, const QString &name, bool blocked);
++
+ private slots:
+     void onDBusDoNotDisturbChanged();
++    void onDBusBlockedAppsChanged();
+ 
+ signals:
+     void doNotDisturbChanged();
++    void appsChanged();
+ 
+ private:
+     QDBusInterface m_iface;
+     bool m_doNotDisturb;
++    QStringList m_blocked;
+ };
+ 
+ #endif // NOTIFICATIONS_H
+diff --git a/src/qml/About/Main.qml b/src/qml/About/Main.qml
+index 9a5e54a..ae29c0b 100644
+--- a/src/qml/About/Main.qml
++++ b/src/qml/About/Main.qml
+@@ -40,11 +40,13 @@ ItemPage {
+             anchors.fill: parent
+ 
+             Item {
+-                height: FishUI.Units.largeSpacing
++                Layout.preferredHeight: FishUI.Units.largeSpacing
+             }
+ 
+             Image {
+                 Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
++                Layout.preferredWidth: 140
++                Layout.preferredHeight: 72
+                 width: 140
+                 height: 72
+                 sourceSize: Qt.size(width, height)
+@@ -52,7 +54,7 @@ ItemPage {
+             }
+ 
+             Item {
+-                height: FishUI.Units.smallSpacing
++                Layout.preferredHeight: FishUI.Units.smallSpacing
+             }
+ 
+             Label {
+@@ -83,10 +85,21 @@ ItemPage {
+             }
+ 
+             Item {
+-                height: FishUI.Units.largeSpacing * 2
++                Layout.preferredHeight: FishUI.Units.largeSpacing * 2
++            }
++
++            Label {
++                text: qsTr("System Information")
++                color: FishUI.Theme.disabledTextColor
++                Layout.leftMargin: FishUI.Units.smallSpacing
+             }
+ 
+             RoundedItem {
++                StandardItem {
++                    key: qsTr("Operating System")
++                    value: about.prettyProductName
++                }
++
+                 StandardItem {
+                     key: qsTr("System Version")
+                     value: about.version
+@@ -102,11 +115,42 @@ ItemPage {
+                     value: about.kernelVersion
+                 }
+ 
++                StandardItem {
++                    key: qsTr("Computer Name")
++                    value: about.hostname
++                }
++
++                StandardItem {
++                    key: qsTr("User")
++                    value: about.userName
++                }
++            }
++
++            Label {
++                text: qsTr("Hardware Information")
++                color: FishUI.Theme.disabledTextColor
++                Layout.leftMargin: FishUI.Units.smallSpacing
++                Layout.topMargin: FishUI.Units.largeSpacing
++            }
++
++            RoundedItem {
++                StandardItem {
++                    key: qsTr("Model")
++                    value: about.deviceModel
++                    visible: value !== ""
++                }
++
+                 StandardItem {
+                     key: qsTr("Processor")
+                     value: about.cpuInfo
+                 }
+ 
++                StandardItem {
++                    key: qsTr("Graphics")
++                    value: about.gpuInfo
++                    visible: value !== ""
++                }
++
+                 StandardItem {
+                     key: qsTr("RAM")
+                     value: about.memorySize
+@@ -119,7 +163,7 @@ ItemPage {
+             }
+ 
+             Item {
+-                height: FishUI.Units.smallSpacing
++                Layout.preferredHeight: FishUI.Units.smallSpacing
+             }
+ 
+             StandardButton {
+@@ -130,6 +174,10 @@ ItemPage {
+                     about.openUpdator()
+                 }
+             }
++
++            Item {
++                Layout.preferredHeight: FishUI.Units.largeSpacing
++            }
+         }
+     }
+ }
+diff --git a/src/qml/Battery/Main.qml b/src/qml/Battery/Main.qml
+index 3d2ad18..73afd7a 100644
+--- a/src/qml/Battery/Main.qml
++++ b/src/qml/Battery/Main.qml
+@@ -193,79 +193,80 @@ ItemPage {
+                     color: FishUI.Theme.disabledTextColor
+                 }
+ 
+-                RowLayout {
+-                    Layout.topMargin: FishUI.Units.largeSpacing
+-                    spacing: FishUI.Units.largeSpacing * 4
++                // Health as a bar over 60-100 %: Poor below 80, Normal 80-89,
++                // Excellent from 90 (new batteries may report more than 100).
++                Item {
++                    id: healthBar
+ 
+-                    // Poor
+-                    Item {
+-                        height: _poorLabel.implicitHeight + 4 + FishUI.Units.smallSpacing
+-                        width: _poorLabel.implicitWidth + FishUI.Units.largeSpacing
+-
+-                        Rectangle {
+-                            id: _poorRect
+-                            anchors.fill: parent
+-                            color: "#FF8738"
+-                            radius: FishUI.Theme.mediumRadius
+-                            opacity: 0.1
+-                            visible: battery.capacity >= 0 && battery.capacity <= 79
+-                        }
++                    readonly property real minimum: 60
++                    readonly property real health: Math.max(minimum, Math.min(100, battery.capacity))
++                    readonly property real position: (health - minimum) / (100 - minimum)
++                    readonly property int rating: battery.capacity >= 90 ? 2 : battery.capacity >= 80 ? 1 : 0
++                    readonly property var ratingColors: ["#F0503C", "#F5B400", "#2EC45A"]
+ 
+-                        Label {
+-                            id: _poorLabel
+-                            anchors.centerIn: parent
+-                            text: qsTr("Poor")
+-                            color: "#FF8738"
++                    Layout.fillWidth: true
++                    Layout.topMargin: FishUI.Units.smallSpacing
++                    Layout.preferredHeight: 18
++
++                    Rectangle {
++                        id: track
++                        anchors.left: parent.left
++                        anchors.right: parent.right
++                        anchors.verticalCenter: parent.verticalCenter
++                        height: 8
++                        radius: height / 2
++
++                        gradient: Gradient {
++                            orientation: Gradient.Horizontal
++                            GradientStop { position: 0.0; color: healthBar.ratingColors[0] }
++                            GradientStop { position: 0.4; color: "#F58A1F" }
++                            GradientStop { position: 0.55; color: healthBar.ratingColors[1] }
++                            GradientStop { position: 0.8; color: healthBar.ratingColors[2] }
++                            GradientStop { position: 1.0; color: healthBar.ratingColors[2] }
+                         }
+                     }
+ 
+-                    Item {
+-                        Layout.fillWidth: true
++                    // Dims the part of the bar above the current health.
++                    Rectangle {
++                        anchors.right: track.right
++                        anchors.verticalCenter: track.verticalCenter
++                        width: track.width * (1 - healthBar.position)
++                        height: track.height
++                        radius: track.radius
++                        color: FishUI.Theme.secondBackgroundColor
++                        opacity: 0.75
++
++                        Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                     }
+ 
+-                    Item {
+-                        height: _normalLabel.implicitHeight + 4 + FishUI.Units.smallSpacing
+-                        width: _normalLabel.implicitWidth + FishUI.Units.largeSpacing
+-
+-                        Rectangle {
+-                            id: _normalRect
+-                            anchors.fill: parent
+-                            color: "#3385FF"
+-                            radius: FishUI.Theme.mediumRadius
+-                            opacity: 0.1
+-                            visible: battery.capacity >= 80 && battery.capacity <= 89
+-                        }
++                    Rectangle {
++                        width: 18
++                        height: 18
++                        radius: 9
++                        anchors.verticalCenter: track.verticalCenter
++                        x: Math.max(0, Math.min(track.width - width, track.width * healthBar.position - width / 2))
++                        color: "white"
++                        border.width: 4
++                        border.color: healthBar.ratingColors[healthBar.rating]
+ 
+-                        Label {
+-                            id: _normalLabel
+-                            anchors.centerIn: parent
+-                            text: qsTr("Normal")
+-                            color: "#3385FF"
+-                        }
++                        Behavior on x { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                     }
++                }
+ 
+-                    Item {
+-                        Layout.fillWidth: true
+-                    }
++                RowLayout {
++                    Layout.fillWidth: true
++                    spacing: 0
+ 
+-                    Item {
+-                        height: _excellentLabel.implicitHeight + 4 + FishUI.Units.smallSpacing
+-                        width: _excellentLabel.implicitWidth + FishUI.Units.largeSpacing
+-
+-                        Rectangle {
+-                            id: _excellentRect
+-                            anchors.fill: parent
+-                            color: "#00CD23"
+-                            radius: FishUI.Theme.mediumRadius
+-                            opacity: 0.1
+-                            visible: battery.capacity >= 90 && battery.capacity <= 100
+-                        }
++                    Repeater {
++                        model: [qsTr("Poor"), qsTr("Normal"), qsTr("Excellent")]
+ 
+                         Label {
+-                            id: _excellentLabel
+-                            anchors.centerIn: parent
+-                            text: qsTr("Excellent")
+-                            color: "#00CD23"
++                            text: modelData
++                            // Under the part of the bar each rating covers.
++                            Layout.preferredWidth: healthBar.width * (index === 0 ? 0.5 : 0.25)
++                            horizontalAlignment: index === 0 ? Text.AlignLeft : index === 1 ? Text.AlignHCenter : Text.AlignRight
++                            color: index === healthBar.rating ? healthBar.ratingColors[index] : FishUI.Theme.disabledTextColor
++                            font.bold: index === healthBar.rating
+                         }
+                     }
+                 }
+diff --git a/src/qml/Blur/Main.qml b/src/qml/Blur/Main.qml
+index 571d46f..852e9c3 100644
+--- a/src/qml/Blur/Main.qml
++++ b/src/qml/Blur/Main.qml
+@@ -156,7 +156,7 @@ ItemPage {
+                 SliderRow {
+                     text: qsTr("Blur strength")
+                     from: 1
+-                    to: 15
++                    to: 20
+                     stepSize: 1
+                     suffix: ""
+                     value: windowEffects.blurStrength
+@@ -172,6 +172,22 @@ ItemPage {
+                     value: windowEffects.noiseStrength
+                     onMoved: (value) => windowEffects.noiseStrength = value
+                 }
++
++                SliderRow {
++                    text: qsTr("Saturation")
++                    from: 50
++                    to: 250
++                    stepSize: 10
++                    value: windowEffects.saturation
++                    onMoved: (value) => windowEffects.saturation = value
++                }
++
++                Label {
++                    text: qsTr("Strength above 15 blurs further than KWin's own maximum. Saturation makes the colours behind the blur more or less vivid.")
++                    color: FishUI.Theme.disabledTextColor
++                    wrapMode: Text.WordWrap
++                    Layout.fillWidth: true
++                }
+             }
+ 
+             RoundedItem {
+diff --git a/src/qml/Cursor/Main.qml b/src/qml/Cursor/Main.qml
+index da7cb03..95612d5 100644
+--- a/src/qml/Cursor/Main.qml
++++ b/src/qml/Cursor/Main.qml
+@@ -53,6 +53,7 @@ ItemPage {
+ 
+             RoundedItem {
+                 GridLayout {
++                    Layout.fillWidth: true
+                     columns: 2
+                     columnSpacing: FishUI.Units.largeSpacing * 1.5
+                     rowSpacing: FishUI.Units.largeSpacing * 2
+@@ -108,6 +109,7 @@ ItemPage {
+                 HorizontalDivider {}
+ 
+                 RowLayout {
++                    Layout.fillWidth: true
+                     spacing: FishUI.Units.largeSpacing * 2
+ 
+                     Label {
+@@ -145,7 +147,7 @@ ItemPage {
+                 GridView {
+                     id: _view
+                     Layout.fillWidth: true
+-                    implicitHeight: Math.ceil(_view.count / rowCount) * cellHeight + FishUI.Units.largeSpacing
++                    Layout.preferredHeight: Math.ceil(_view.count / rowCount) * cellHeight + FishUI.Units.largeSpacing
+                     model: cursorModel
+                     interactive: false
+                     visible: _view.count > 0
+@@ -158,7 +160,9 @@ ItemPage {
+ 
+                     currentIndex: cursorModel.themeIndex(cursorModel.currentTheme)
+ 
+-                    property int rowCount: _view.width / itemWidth
++                    // Never 0: a division by 0 made the height Infinity and
++                    // piled every widget of the page on top of each other.
++                    property int rowCount: Math.max(1, Math.floor(_view.width / itemWidth))
+                     property int itemWidth: 128
+                     property int itemHeight: 128
+ 
+@@ -194,7 +198,6 @@ ItemPage {
+                             onClicked: {
+                                 _view.currentIndex = index
+                                 cursorModel.currentTheme = model.id
+-                                console.log(model.id)
+                             }
+                         }
+ 
+@@ -218,12 +221,12 @@ ItemPage {
+                             }
+ 
+                             Item {
+-                                height: FishUI.Units.largeSpacing
++                                Layout.preferredHeight: FishUI.Units.largeSpacing
+                             }
+ 
+                             FishUI.IconItem {
+-                                width: 22
+-                                height: 22
++                                Layout.preferredWidth: 22
++                                Layout.preferredHeight: 22
+                                 source: model.image
+                                 smooth: true
+                                 Layout.alignment: Qt.AlignHCenter
+@@ -248,7 +251,7 @@ ItemPage {
+             }
+ 
+             Item {
+-                height: FishUI.Units.smallSpacing
++                Layout.preferredHeight: FishUI.Units.smallSpacing
+             }
+         }
+     }
+diff --git a/src/qml/DateTime/TimeZoneDialog.qml b/src/qml/DateTime/TimeZoneDialog.qml
+index 98f689a..4a244a4 100644
+--- a/src/qml/DateTime/TimeZoneDialog.qml
++++ b/src/qml/DateTime/TimeZoneDialog.qml
+@@ -48,8 +48,8 @@ FishUI.Window {
+     function pick(result) {
+         searchField.text = ""
+         timeZoneMap.select(result.zone)
+-        var x = result.x * _worldMap.width
+-        var y = result.y * _worldMap.height
++        var x = _worldMap.mapX + result.x * _worldMap.paintedWidth
++        var y = _worldMap.mapY + result.y * _worldMap.paintedHeight
+         dot.show(x, y)
+         popupItem.x = Math.min(x + FishUI.Units.smallSpacing * 1.5, _worldMap.width - popupItem.width - 2)
+         popupItem.y = Math.min(y + FishUI.Units.smallSpacing * 1.5, _worldMap.height - popupItem.height - 2)
+@@ -65,7 +65,6 @@ FishUI.Window {
+         target: timeZoneMap
+ 
+         function onAvailableListChanged() {
+-            popupText.text = timeZoneMap.availableList[0]
+             popupText.text = timeZoneMap.localeTimeZoneName(timeZoneMap.availableList[0])
+             popupItem.visible = true
+         }
+@@ -115,6 +114,11 @@ FishUI.Window {
+             sourceSize: Qt.size(width, height)
+             fillMode: Image.PreserveAspectFit
+ 
++            // The map is letterboxed inside the item; zone positions are
++            // relative to the drawn map, not to the item.
++            readonly property real mapX: (width - paintedWidth) / 2
++            readonly property real mapY: (height - paintedHeight) / 2
++
+             Rectangle {
+                 id: dot
+                 width: 20
+@@ -150,7 +154,7 @@ FishUI.Window {
+                 Label {
+                     id: popupText
+                     anchors.centerIn: parent
+-                    text: timeZoneMap.availableList[0] ? timeZoneMap.availableList[0] : ""
++                    text: timeZoneMap.availableList[0] ? timeZoneMap.localeTimeZoneName(timeZoneMap.availableList[0]) : ""
+                     color: FishUI.Theme.highlightedTextColor
+                 }
+             }
+@@ -158,8 +162,9 @@ FishUI.Window {
+             MouseArea {
+                 anchors.fill: parent
+ 
+-                onClicked: {
+-                    timeZoneMap.clicked(mouse.x, mouse.y, _worldMap.width, _worldMap.height)
++                onClicked: (mouse) => {
++                    timeZoneMap.clicked(mouse.x - _worldMap.mapX, mouse.y - _worldMap.mapY,
++                                        _worldMap.paintedWidth, _worldMap.paintedHeight)
+                     dot.show(mouse.x, mouse.y)
+ 
+                     popupItem.x = mouse.x + FishUI.Units.smallSpacing * 1.5
+diff --git a/src/qml/HorizontalDivider.qml b/src/qml/HorizontalDivider.qml
+index 71e03f0..2cecef7 100644
+--- a/src/qml/HorizontalDivider.qml
++++ b/src/qml/HorizontalDivider.qml
+@@ -23,7 +23,7 @@ import FishUI 1.0 as FishUI
+ 
+ Item {
+     id: control
+-    height: FishUI.Units.largeSpacing * 2
++    implicitHeight: FishUI.Units.largeSpacing * 2
+ 
+     Layout.fillWidth: true
+ 
+diff --git a/src/qml/LanguagePage.qml b/src/qml/LanguagePage.qml
+index b188a2a..b14949b 100644
+--- a/src/qml/LanguagePage.qml
++++ b/src/qml/LanguagePage.qml
+@@ -21,6 +21,27 @@ import Cutefish.Settings 1.0 as Settings
+ ItemPage {
+     headerTitle: qsTr("Region & Language")
+ 
++    // Icon-only button with a tooltip, sized by the row it sits in.
++    component LayoutButton: ToolButton {
++        property string iconName
++        property string tip
++        property real size: 32
++
++        Layout.preferredWidth: size
++        Layout.preferredHeight: size
++        padding: 0
++        display: AbstractButton.IconOnly
++        icon.name: iconName
++        icon.width: 16
++        icon.height: 16
++        icon.color: FishUI.Theme.textColor
++        opacity: enabled ? 1 : 0.4
++
++        ToolTip.text: tip
++        ToolTip.visible: hovered
++        ToolTip.delay: 500
++    }
++
+     Settings.Language {
+         id: language
+         onFormatsFailed: (message) => formatsError.text = message
+@@ -81,11 +102,25 @@ ItemPage {
+                     }
+                 }
+ 
+-                Label {
+-                    text: language.formatsBusy ? qsTr("Preparing the formats…") : language.formatsPreview
+-                    color: FishUI.Theme.disabledTextColor
+-                    wrapMode: Text.WordWrap
++                RowLayout {
+                     Layout.fillWidth: true
++                    spacing: FishUI.Units.smallSpacing
++
++                    FishUI.BusyIndicator {
++                        visible: language.formatsBusy
++                        running: visible
++                        Layout.preferredWidth: 20
++                        Layout.preferredHeight: 20
++                    }
++
++                    Label {
++                        text: language.formatsBusy
++                              ? qsTr("%1  (waiting for the password to install these formats…)").arg(language.formatsPreview)
++                              : language.formatsPreview
++                        color: FishUI.Theme.disabledTextColor
++                        wrapMode: Text.WordWrap
++                        Layout.fillWidth: true
++                    }
+                 }
+ 
+                 Label {
+@@ -116,8 +151,12 @@ ItemPage {
+                     model: keyboard.layouts
+ 
+                     RowLayout {
++                        id: layoutRow
+                         Layout.fillWidth: true
+-                        spacing: FishUI.Units.smallSpacing
++                        spacing: 0
++
++                        // The three buttons share at most a fifth of the row.
++                        readonly property real buttonSize: Math.min(32, width * 0.2 / 3)
+ 
+                         Label {
+                             text: modelData.name
+@@ -125,20 +164,26 @@ ItemPage {
+                             Layout.fillWidth: true
+                         }
+ 
+-                        Button {
+-                            text: "↑"
++                        LayoutButton {
++                            size: layoutRow.buttonSize
++                            iconName: "go-up"
++                            tip: qsTr("Move up")
+                             enabled: index > 0
+                             onClicked: keyboard.moveLayout(index, index - 1)
+                         }
+ 
+-                        Button {
+-                            text: "↓"
++                        LayoutButton {
++                            size: layoutRow.buttonSize
++                            iconName: "go-down"
++                            tip: qsTr("Move down")
+                             enabled: index < keyboard.layouts.length - 1
+                             onClicked: keyboard.moveLayout(index, index + 1)
+                         }
+ 
+-                        Button {
+-                            text: qsTr("Remove")
++                        LayoutButton {
++                            size: layoutRow.buttonSize
++                            iconName: "list-remove"
++                            tip: qsTr("Remove")
+                             enabled: keyboard.layouts.length > 1
+                             onClicked: keyboard.removeLayout(index)
+                         }
+diff --git a/src/qml/Notification/Main.qml b/src/qml/Notification/Main.qml
+index 471b20f..25ab60f 100644
+--- a/src/qml/Notification/Main.qml
++++ b/src/qml/Notification/Main.qml
+@@ -38,9 +38,12 @@ ItemPage {
+         ColumnLayout {
+             id: layout
+             anchors.fill: parent
++            spacing: FishUI.Units.largeSpacing * 2
+ 
+             RoundedItem {
+                 RowLayout {
++                    Layout.fillWidth: true
++
+                     Label {
+                         text: qsTr("Do Not Disturb")
+                     }
+@@ -56,6 +59,50 @@ ItemPage {
+                     }
+                 }
+             }
++
++            RoundedItem {
++                Label {
++                    text: qsTr("Allow notifications from")
++                    color: FishUI.Theme.disabledTextColor
++                }
++
++                TextField {
++                    id: appFilter
++                    Layout.fillWidth: true
++                    placeholderText: qsTr("Search apps")
++                    selectByMouse: true
++                }
++
++                Repeater {
++                    model: notifications.apps
++
++                    RowLayout {
++                        Layout.fillWidth: true
++                        spacing: FishUI.Units.largeSpacing
++                        visible: appFilter.text === ""
++                                 || modelData.name.toLowerCase().indexOf(appFilter.text.toLowerCase()) !== -1
++
++                        Image {
++                            Layout.preferredWidth: 24
++                            Layout.preferredHeight: 24
++                            sourceSize: Qt.size(24, 24)
++                            source: "image://icontheme/" + modelData.icon
++                        }
++
++                        Label {
++                            text: modelData.name
++                            Layout.fillWidth: true
++                            elide: Text.ElideRight
++                        }
++
++                        Switch {
++                            rightPadding: 0
++                            checked: !modelData.blocked
++                            onClicked: notifications.setAppBlocked(modelData.id, modelData.name, !checked)
++                        }
++                    }
++                }
++            }
+         }
+     }
+ }
+diff --git a/src/qml/SideBar.qml b/src/qml/SideBar.qml
+index ec7d54c..8bb6270 100644
+--- a/src/qml/SideBar.qml
++++ b/src/qml/SideBar.qml
+@@ -31,6 +31,30 @@ Item {
+     property int itemRadiusV: 8
+ 
+     property alias view: listView
++    property alias searchText: searchField.text
++
++    //! Whether a sidebar entry matches the search: its title, id or keywords.
++    function matches(title, name, keywords) {
++        var needle = searchField.text.trim().toLowerCase()
++        if (needle === "")
++            return true
++        var haystack = (title + " " + name + " " + keywords).toLowerCase()
++        var words = needle.split(/\s+/)
++        for (var i = 0; i < words.length; ++i) {
++            if (haystack.indexOf(words[i]) === -1)
++                return false
++        }
++        return true
++    }
++
++    function firstMatch() {
++        for (var i = 0; i < listModel.count; ++i) {
++            var e = listModel.get(i)
++            if (matches(e.title, e.name, e.keywords))
++                return i
++        }
++        return -1
++    }
+     property alias model: listModel
+     property alias currentIndex: listView.currentIndex
+ 
+@@ -56,6 +80,7 @@ Item {
+         ListElement {
+             title: qsTr("WLAN")
+             name: "wlan"
++            keywords: "wifi wi-fi wireless network internet hidden password"
+             page: "qrc:/qml/WLAN/Main.qml"
+             iconSource: "wlan.svg"
+             iconColor: "#0067FF"
+@@ -65,6 +90,7 @@ Item {
+         ListElement {
+             title: qsTr("Ethernet")
+             name: "ethernet"
++            keywords: "wired cable lan network ip dhcp"
+             page: "qrc:/qml/Wired/Main.qml"
+             iconSource: "network.svg"
+             iconColor: "#0067FF"
+@@ -74,6 +100,7 @@ Item {
+         ListElement {
+             title: qsTr("Hotspot")
+             name: "hotspot"
++            keywords: "tethering share internet access point wifi"
+             page: "qrc:/qml/Hotspot/Main.qml"
+             iconSource: "hotspot.svg"
+             iconColor: "#0067FF"
+@@ -83,6 +110,7 @@ Item {
+         ListElement {
+             title: qsTr("Network Monitor")
+             name: "netmonitor"
++            keywords: "firewall opensnitch traffic connections privacy block allow"
+             page: "qrc:/qml/NetMonitor/Main.qml"
+             iconSource: "network.svg"
+             iconColor: "#FF6B00"
+@@ -92,6 +120,7 @@ Item {
+         ListElement {
+             title: qsTr("Bluetooth")
+             name: "bluetooth"
++            keywords: "devices pair headphones mouse keyboard"
+             page: "qrc:/qml/Bluetooth/Main.qml"
+             iconSource: "bluetooth.svg"
+             iconColor: "#0067FF"
+@@ -110,6 +139,7 @@ Item {
+         ListElement {
+             title: qsTr("Proxy")
+             name: "proxy"
++            keywords: "network http socks pac"
+             page: "qrc:/qml/Proxy/Main.qml"
+             iconSource: "proxy.svg"
+             iconColor: "#0067FF"
+@@ -119,6 +149,7 @@ Item {
+         ListElement {
+             title: qsTr("Display")
+             name: "display"
++            keywords: "screen monitor resolution scale brightness rotation night light refresh"
+             page: "qrc:/qml/Display/Main.qml"
+             iconSource: "display.svg"
+             iconColor: "#0087ED"
+@@ -128,6 +159,7 @@ Item {
+         ListElement {
+             title: qsTr("Appearance")
+             name: "appearance"
++            keywords: "theme dark light mode accent color font size icons window corners radius"
+             page: "qrc:/qml/Appearance/Main.qml"
+             iconSource: "appearance.svg"
+             iconColor: "#03B4CB"
+@@ -137,6 +169,7 @@ Item {
+         ListElement {
+             title: qsTr("Blur & Transparency")
+             name: "blur"
++            keywords: "transparency translucency opacity noise saturation frosted glass"
+             page: "qrc:/qml/Blur/Main.qml"
+             iconSource: "blur.svg"
+             iconColor: "#5E8BDE"
+@@ -146,6 +179,7 @@ Item {
+         ListElement {
+             title: qsTr("Background")
+             name: "background"
++            keywords: "wallpaper picture color desktop"
+             page: "qrc:/qml/Wallpaper/Main.qml"
+             iconSource: "wallpaper.svg"
+             iconColor: "#34B4A7"
+@@ -155,6 +189,7 @@ Item {
+         ListElement {
+             title: qsTr("Dock")
+             name: "dock"
++            keywords: "position size icons autohide taskbar"
+             page: "qrc:/qml/Dock/Main.qml"
+             iconSource: "dock.svg"
+             iconColor: "#8585FC"
+@@ -164,6 +199,7 @@ Item {
+         ListElement {
+             title: qsTr("User")
+             name: "accounts"
++            keywords: "user users picture avatar name password login automatic"
+             page: "qrc:/qml/User/Main.qml"
+             iconSource: "accounts.svg"
+             iconColor: "#DA7C43"
+@@ -173,6 +209,7 @@ Item {
+         ListElement {
+             title: qsTr("Notifications")
+             name: "notifications"
++            keywords: "do not disturb apps banners alerts"
+             page: "qrc:/qml/Notification/Main.qml"
+             iconSource: "notifications.svg"
+             iconColor: "#F16884"
+@@ -182,6 +219,7 @@ Item {
+         ListElement {
+             title: qsTr("Sound")
+             name: "sound"
++            keywords: "audio volume speaker microphone output input"
+             page: "qrc:/qml/Sound/Main.qml"
+             iconSource: "sound.svg"
+             iconColor: "#F16884"
+@@ -191,6 +229,7 @@ Item {
+         ListElement {
+             title: qsTr("Mouse")
+             name: "mouse"
++            keywords: "cursor pointer speed acceleration left hand natural scrolling"
+             page: "qrc:/qml/Cursor/Main.qml"
+             iconSource: "cursor.svg"
+             iconColor: "#3385FF"
+@@ -200,6 +239,7 @@ Item {
+         ListElement {
+             title: qsTr("Touchpad")
+             name: "touchpad"
++            keywords: "trackpad tap scrolling gestures pointer speed"
+             page: "qrc:/qml/Touchpad/Main.qml"
+             iconSource: "touchpad.svg"
+             iconColor: "#999999"
+@@ -218,6 +258,7 @@ Item {
+         ListElement {
+             title: qsTr("Date & Time")
+             name: "datetime"
++            keywords: "time zone timezone clock 24-hour ntp automatic date"
+             page: "qrc:/qml/DateTime/Main.qml"
+             iconSource: "datetime.svg"
+             iconColor: "#418CFF"
+@@ -227,6 +268,7 @@ Item {
+         ListElement {
+             title: qsTr("Default Applications")
+             name: "defaultapps"
++            keywords: "browser email file manager terminal video music image"
+             page: "qrc:/qml/DefaultApp/Main.qml"
+             iconSource: "defaultapps.svg"
+             iconColor: "#418CFF"
+@@ -236,6 +278,7 @@ Item {
+         ListElement {
+             title: qsTr("Region & Language")
+             name: "language"
++            keywords: "region formats locale keyboard layouts input"
+             page: "qrc:/qml/LanguagePage.qml"
+             iconSource: "language.svg"
+             iconColor: "#20A7FF"
+@@ -245,6 +288,7 @@ Item {
+         ListElement {
+             title: qsTr("Battery")
+             name: "battery"
++            keywords: "health charge power percentage history"
+             page: "qrc:/qml/Battery/Main.qml"
+             iconSource: "battery.svg"
+             iconColor: "#2EC347"
+@@ -254,6 +298,7 @@ Item {
+         ListElement {
+             title: qsTr("Power")
+             name: "power"
++            keywords: "performance power save mode screen off sleep idle"
+             page: "qrc:/qml/Power/Main.qml"
+             iconColor: "#FE8433"
+             iconSource: "power.svg"
+@@ -263,6 +308,7 @@ Item {
+         ListElement {
+             title: qsTr("About")
+             name: "about"
++            keywords: "system information hardware processor cpu graphics gpu memory ram storage kernel version"
+             page: "qrc:/qml/About/Main.qml"
+             iconSource: "about.svg"
+             iconColor: "#24A7FD"
+@@ -286,6 +332,44 @@ Item {
+             font.pointSize: 13
+         }
+ 
++        TextField {
++            id: searchField
++            Layout.fillWidth: true
++            Layout.leftMargin: FishUI.Units.largeSpacing
++            Layout.rightMargin: FishUI.Units.largeSpacing
++            Layout.bottomMargin: FishUI.Units.smallSpacing
++            placeholderText: qsTr("Search settings")
++            selectByMouse: true
++            leftPadding: FishUI.Units.largeSpacing + 16 + FishUI.Units.smallSpacing
++
++            Image {
++                anchors.left: parent.left
++                anchors.leftMargin: FishUI.Units.largeSpacing
++                anchors.verticalCenter: parent.verticalCenter
++                width: 16
++                height: 16
++                sourceSize: Qt.size(16, 16)
++                source: "image://icontheme/edit-find"
++                opacity: 0.6
++            }
++
++            // Enter opens the first page that matches; Escape clears.
++            onAccepted: {
++                var i = firstMatch()
++                if (i >= 0)
++                    listView.currentIndex = i
++            }
++            Keys.onEscapePressed: clear()
++        }
++
++        Label {
++            text: qsTr("No results")
++            color: FishUI.Theme.disabledTextColor
++            visible: searchField.text !== "" && firstMatch() === -1
++            Layout.alignment: Qt.AlignHCenter
++            Layout.topMargin: FishUI.Units.largeSpacing
++        }
++
+         ListView {
+             id: listView
+             Layout.fillHeight: true
+@@ -293,7 +377,8 @@ Item {
+             clip: true
+             model: listModel
+ 
+-            spacing: FishUI.Units.smallSpacing / 2
++            // Hidden (filtered out) entries still get the spacing.
++            spacing: searchField.text === "" ? FishUI.Units.smallSpacing / 2 : 0
+             leftMargin: FishUI.Units.largeSpacing
+             rightMargin: FishUI.Units.largeSpacing
+             topMargin: 0
+@@ -302,17 +387,21 @@ Item {
+             ScrollBar.vertical: ScrollBar {}
+ 
+             highlightFollowsCurrentItem: true
+-            highlightMoveDuration: 0
+-            highlightResizeDuration : 0
++            highlightMoveDuration: 150
++            highlightMoveVelocity: -1
++            highlightResizeDuration: 0
++            // Slides to the selected entry.
+             highlight: Rectangle {
++                visible: listView.currentItem ? listView.currentItem.visible : false
+                 radius: FishUI.Theme.mediumRadius
+                 color: Qt.rgba(FishUI.Theme.textColor.r,
+                                FishUI.Theme.textColor.g,
+-                               FishUI.Theme.textColor.b, 0.05)
++                               FishUI.Theme.textColor.b, FishUI.Theme.darkMode ? 0.1 : 0.05)
+                 smooth: true
+             }
+ 
+-            section.property: "category"
++            // No category headers while searching: the hits are few.
++            section.property: searchField.text === "" ? "category" : ""
+             section.delegate: Item {
+                 width: ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin
+                 height: FishUI.Units.fontMetrics.height + FishUI.Units.largeSpacing + FishUI.Units.smallSpacing
+@@ -337,7 +426,11 @@ Item {
+             delegate: Item {
+                 id: item
+                 width: ListView.view.width - ListView.view.leftMargin - ListView.view.rightMargin
+-                height: 35
++
++                readonly property bool matched: matches(model.title, model.name, model.keywords)
++                height: matched ? 35 : 0
++                visible: matched
++                clip: true
+ 
+                 property bool isCurrent: listView.currentIndex === index
+ 
+@@ -356,7 +449,7 @@ Item {
+                     color: mouseArea.pressed ? Qt.rgba(FishUI.Theme.textColor.r,
+                                                        FishUI.Theme.textColor.g,
+                                                        FishUI.Theme.textColor.b, FishUI.Theme.darkMode ? 0.05 : 0.1) :
+-                           mouseArea.containsMouse || isCurrent ? Qt.rgba(FishUI.Theme.textColor.r,
++                           mouseArea.containsMouse && !isCurrent ? Qt.rgba(FishUI.Theme.textColor.r,
+                                                                           FishUI.Theme.textColor.g,
+                                                                           FishUI.Theme.textColor.b, FishUI.Theme.darkMode ? 0.1 : 0.05) :
+                                                                   "transparent"
+diff --git a/src/qml/StandardItem.qml b/src/qml/StandardItem.qml
+index 5a94d2e..699cd07 100644
+--- a/src/qml/StandardItem.qml
++++ b/src/qml/StandardItem.qml
+@@ -25,7 +25,7 @@ import FishUI 1.0 as FishUI
+ Item {
+     id: control
+ 
+-    height: mainLayout.implicitHeight + FishUI.Theme.smallRadius * 2
++    implicitHeight: mainLayout.implicitHeight + FishUI.Theme.smallRadius * 2
+ 
+     property alias key: keyLabel.text
+     property alias value: valueLabel.text
+@@ -55,6 +55,9 @@ Item {
+         Label {
+             id: valueLabel
+             color: FishUI.Theme.disabledTextColor
++            elide: Text.ElideRight
++            horizontalAlignment: Text.AlignRight
++            Layout.maximumWidth: control.width * 0.65
+         }
+     }
+ }
+diff --git a/src/qml/User/Main.qml b/src/qml/User/Main.qml
+index 39771e9..d7d8887 100644
+--- a/src/qml/User/Main.qml
++++ b/src/qml/User/Main.qml
+@@ -67,13 +67,7 @@ ItemPage {
+                 spacing: FishUI.Units.largeSpacing * 2
+                 interactive: false
+ 
+-                Layout.preferredHeight: {
+-                    var totalHeight = 0
+-                    for (var i = 0; i < _userView.visibleChildren.length; ++i) {
+-                        totalHeight += _userView.visibleChildren[i].height
+-                    }
+-                    return totalHeight
+-                }
++                Layout.preferredHeight: contentHeight
+ 
+                 delegate: UserDelegateItem {
+                     width: _userView.width
+diff --git a/src/qml/User/UserDelegateItem.qml b/src/qml/User/UserDelegateItem.qml
+index 113112b..f4eadad 100644
+--- a/src/qml/User/UserDelegateItem.qml
++++ b/src/qml/User/UserDelegateItem.qml
+@@ -33,7 +33,9 @@ import "../"
+ RoundedItem {
+     id: control
+ 
+-    height: mainLayout.implicitHeight + FishUI.Units.largeSpacing * 2
++    // The picture just picked: AccountsService copies it to the same path
++    // it already had, so the old image would stay cached.
++    property string pickedIcon: ""
+ 
+     UserAccount {
+         id: currentUser
+@@ -46,24 +48,25 @@ RoundedItem {
+         nameFilters: ["Image files (*.jpg *.png)", "All files (*)"]
+         onAccepted: {
+             currentUser.iconFileName = decodeURIComponent(fileDialog.selectedFile.toString().replace("file://", ""))
+-            _userImage.source = fileDialog.selectedFile
+-            _userImage.update()
++            control.pickedIcon = fileDialog.selectedFile.toString()
+         }
+     }
+ 
+     ColumnLayout {
+         id: mainLayout
++        Layout.fillWidth: true
+         spacing: 0
+ 
+         RowLayout {
+             id: _itemLayout
++            Layout.fillWidth: true
+             spacing: 0
+ 
+             Item {
+                 id: _topItem
+ 
+                 Layout.fillWidth: true
+-                height: _topLayout.implicitHeight + FishUI.Units.largeSpacing
++                Layout.preferredHeight: _topLayout.implicitHeight + FishUI.Units.largeSpacing
+ 
+                 MouseArea {
+                     anchors.fill: parent
+@@ -84,13 +87,22 @@ RoundedItem {
+ 
+                         Layout.preferredWidth: iconSize
+                         Layout.preferredHeight: iconSize
+-                        sourceSize: String(source) === "image://icontheme/default-user" ? Qt.size(iconSize, iconSize) : undefined
+-                        source: iconFileName ? "file:///" + iconFileName : "image://icontheme/default-user"
+-                        visible: status === Image.Ready
++                        sourceSize: Qt.size(iconSize * 2, iconSize * 2)
++                        fillMode: Image.PreserveAspectCrop
++                        cache: false
++                        source: control.pickedIcon ? control.pickedIcon
++                              : currentUser.iconFileName ? "file://" + currentUser.iconFileName
++                              : "image://icontheme/default-user"
+                         Layout.alignment: Qt.AlignVCenter
+ 
++                        ToolTip.text: qsTr("Change picture")
++                        ToolTip.visible: _avatarArea.containsMouse
++                        ToolTip.delay: 500
++
+                         MouseArea {
++                            id: _avatarArea
+                             anchors.fill: parent
++                            hoverEnabled: true
+                             onClicked: fileDialog.open()
+                             cursorShape: Qt.PointingHandCursor
+                         }
+@@ -117,14 +129,14 @@ RoundedItem {
+                     }
+ 
+                     Item {
+-                        width: FishUI.Units.largeSpacing
++                        Layout.preferredWidth: FishUI.Units.largeSpacing
+                     }
+ 
+                     Label {
+                         Layout.alignment: Qt.AlignVCenter
+-                        text: realName
++                        text: currentUser.realName
+                         color: FishUI.Theme.disabledTextColor
+-                        visible: realName !== userName
++                        visible: currentUser.realName !== "" && currentUser.realName !== userName
+                     }
+ 
+                     Item {
+@@ -138,7 +150,7 @@ RoundedItem {
+                     }
+ 
+                     Item {
+-                        width: FishUI.Units.smallSpacing
++                        Layout.preferredWidth: FishUI.Units.smallSpacing
+                     }
+ 
+                     FishUI.RoundImageButton {
+@@ -157,15 +169,42 @@ RoundedItem {
+             spacing: FishUI.Units.largeSpacing
+ 
+             Item {
+-                height: FishUI.Units.largeSpacing
++                Layout.preferredHeight: FishUI.Units.largeSpacing
+             }
+ 
+             GridLayout {
+                 Layout.fillWidth: true
+                 Layout.bottomMargin: FishUI.Units.smallSpacing
+                 rowSpacing: FishUI.Units.largeSpacing * 2
++                columnSpacing: FishUI.Units.largeSpacing * 2
+                 columns: 2
+ 
++                Label {
++                    text: qsTr("Picture")
++                }
++
++                Button {
++                    text: qsTr("Change picture…")
++                    Layout.alignment: Qt.AlignRight
++                    onClicked: fileDialog.open()
++                }
++
++                Label {
++                    text: qsTr("Full name")
++                }
++
++                TextField {
++                    id: realNameField
++                    Layout.fillWidth: true
++                    placeholderText: userName
++                    text: currentUser.realName
++                    selectByMouse: true
++                    onEditingFinished: {
++                        if (text.trim() !== currentUser.realName)
++                            currentUser.realName = text.trim()
++                    }
++                }
++
+                 Label {
+                     text: qsTr("Account type")
+                 }
+diff --git a/src/qml/Wallpaper/Main.qml b/src/qml/Wallpaper/Main.qml
+index 20bca61..e9f6a28 100644
+--- a/src/qml/Wallpaper/Main.qml
++++ b/src/qml/Wallpaper/Main.qml
+@@ -45,6 +45,7 @@ ItemPage {
+ 
+             RoundedItem {
+                 RowLayout {
++                    Layout.fillWidth: true
+                     spacing: FishUI.Units.largeSpacing * 2
+ 
+                     Label {
+@@ -76,10 +77,12 @@ ItemPage {
+                 GridView {
+                     id: _view
+ 
+-                    property int rowCount: _view.width / itemWidth
++                    // Never 0: before the layout gives the view a width, a
++                    // division by 0 made the height Infinity and broke the page.
++                    property int rowCount: Math.max(1, Math.floor(_view.width / itemWidth))
+ 
+                     Layout.fillWidth: true
+-                    implicitHeight: Math.ceil(_view.count / rowCount) * cellHeight + FishUI.Units.largeSpacing
++                    Layout.preferredHeight: Math.ceil(_view.count / rowCount) * cellHeight + FishUI.Units.largeSpacing
+ 
+                     visible: background.type === 0
+ 
+@@ -208,12 +211,12 @@ ItemPage {
+ 
+                 Item {
+                     visible: background.type === 1
+-                    height: FishUI.Units.smallSpacing
++                    Layout.preferredHeight: FishUI.Units.smallSpacing
+                 }
+ 
+                 Loader {
+                     Layout.fillWidth: true
+-                    height: item ? item.height : 0
++                    Layout.preferredHeight: item ? item.implicitHeight : 0
+                     visible: background.type === 1
+                     sourceComponent: colorView
+                 }
+@@ -226,7 +229,7 @@ ItemPage {
+ //            }
+ 
+             Item {
+-                height: FishUI.Units.largeSpacing
++                Layout.preferredHeight: FishUI.Units.largeSpacing
+             }
+         }
+     }
+@@ -238,7 +241,7 @@ ItemPage {
+             id: _colorView
+             Layout.fillWidth: true
+ 
+-            property int rowCount: _colorView.width / cellWidth
++            property int rowCount: Math.max(1, Math.floor(_colorView.width / cellWidth))
+ 
+             implicitHeight: Math.ceil(_colorView.count / _colorView.rowCount) * cellHeight + FishUI.Units.largeSpacing
+ 
+diff --git a/src/qml/main.qml b/src/qml/main.qml
+index c798083..7422d9b 100644
+--- a/src/qml/main.qml
++++ b/src/qml/main.qml
+@@ -34,8 +34,6 @@ FishUI.Window {
+     minimumWidth: 900
+     minimumHeight: 600
+ 
+-    property alias stackView: _stackView
+-
+     header.height: 40
+     contentTopMargin: 0
+ 
+@@ -55,15 +53,61 @@ FishUI.Window {
+             }
+         }
+ 
+-        StackView {
+-            id: _stackView
++        // One Loader per page: a page is built (in the background) the first
++        // time it's opened and then kept, so switching back is instant. It
++        // used to be rebuilt from its QML file on every click.
++        Item {
++            id: pages
+             Layout.fillWidth: true
+             Layout.fillHeight: true
+-            initialItem: Qt.resolvedUrl(sideBar.model.get(0).page)
+             clip: true
+ 
+-            pushEnter: Transition {}
+-            pushExit: Transition {}
++            property int currentIndex: 0
++
++            Repeater {
++                id: pagesRepeater
++                model: sideBar.model
++
++                Loader {
++                    id: pageLoader
++
++                    readonly property bool current: index === pages.currentIndex
++
++                    width: pages.width
++                    height: pages.height
++                    active: false
++                    asynchronous: true
++                    source: model.page
++                    visible: current && status === Loader.Ready
++                    opacity: 0
++
++                    onCurrentChanged: {
++                        if (current)
++                            active = true
++                        if (current && status === Loader.Ready)
++                            enterAnimation.restart()
++                    }
++                    onStatusChanged: if (current && status === Loader.Ready) enterAnimation.restart()
++                    Component.onCompleted: if (current) active = true
++
++                    ParallelAnimation {
++                        id: enterAnimation
++                        NumberAnimation { target: pageLoader; property: "opacity"; from: 0; to: 1; duration: 160; easing.type: Easing.OutCubic }
++                        NumberAnimation { target: pageLoader; property: "y"; from: 12; to: 0; duration: 200; easing.type: Easing.OutCubic }
++                    }
++                }
++            }
++
++            FishUI.BusyIndicator {
++                anchors.centerIn: parent
++                width: 32
++                height: 32
++                running: visible
++                visible: {
++                    var item = pagesRepeater.itemAt(pages.currentIndex)
++                    return item ? item.status === Loader.Loading : false
++                }
++            }
+         }
+     }
+ 
+@@ -71,8 +115,7 @@ FishUI.Window {
+         if (index < 0 || index >= sideBar.model.count)
+             return
+ 
+-        _stackView.pop()
+-        _stackView.push(Qt.resolvedUrl(sideBar.model.get(index).page))
++        pages.currentIndex = index
+     }
+ 
+     function switchPageFromName(pageName) {
+diff --git a/src/windoweffects.cpp b/src/windoweffects.cpp
+index edad60c..b28db59 100644
+--- a/src/windoweffects.cpp
++++ b/src/windoweffects.cpp
+@@ -31,11 +31,36 @@ static constexpr int DefaultBlurStrength = 15;
+ static constexpr int DefaultNoiseStrength = 0;
+ static constexpr int DefaultInactive = 85;
+ static constexpr int DefaultMoveResize = 80;
++static constexpr int DefaultSaturation = 150;
++static constexpr int MaxBlurStrength = 20;
+ static const QString RulePrefix = QStringLiteral("cutefish-blur-");
++// Our blur effect (kwin-plugins/plugins/blur) and its kwinrc group.
++static const QString BlurEffectId = QStringLiteral("cutefish_blur");
++static const QString BlurGroup = QStringLiteral("Effect-cutefish_blur");
+ 
+ static KSharedConfigPtr kwinConfig()
+ {
+-    return KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals);
++    static KSharedConfigPtr config = [] {
++        KSharedConfigPtr c = KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals);
++        // Settings made before the blur moved out of KWin live in KWin's own
++        // group; carry them over once.
++        // (The new group always "exists": /etc/xdg/kwinrc has it.)
++        KConfigGroup cutefish = c->group(QStringLiteral("Cutefish"));
++        if (!cutefish.readEntry("BlurMigrated", false)) {
++            KConfigGroup legacy = c->group(QStringLiteral("Effect-blur"));
++            KConfigGroup blur = c->group(BlurGroup);
++            for (const char *key : {"BlurStrength", "NoiseStrength", "ForceBlurClasses"}) {
++                if (legacy.hasKey(key))
++                    blur.writeEntry(key, legacy.readEntry(key, QString()));
++            }
++            cutefish.writeEntry("BlurMigrated", true);
++            c->sync();
++        }
++        return c;
++    }();
++    // KWin and other apps write kwinrc too; never answer from a stale copy.
++    config->reparseConfiguration();
++    return config;
+ }
+ 
+ //! The window class KWin sees for an app: its StartupWMClass, else the
+@@ -65,25 +90,43 @@ WindowEffects::WindowEffects(QObject *parent)
+ 
+ int WindowEffects::blurStrength() const
+ {
+-    return kwinConfig()->group(QStringLiteral("Effect-blur")).readEntry("BlurStrength", 15);
++    return kwinConfig()->group(BlurGroup).readEntry("BlurStrength", DefaultBlurStrength);
+ }
+ 
+ void WindowEffects::setBlurStrength(int strength)
+ {
+-    strength = std::clamp(strength, 1, 15);
++    strength = std::clamp(strength, 1, MaxBlurStrength);
+     if (strength == blurStrength())
+         return;
+ 
+-    KConfigGroup group = kwinConfig()->group(QStringLiteral("Effect-blur"));
++    KConfigGroup group = kwinConfig()->group(BlurGroup);
+     group.writeEntry("BlurStrength", strength);
+     group.sync();
+-    reconfigureKWin();
++    reconfigureEffect(BlurEffectId);
+     emit blurStrengthChanged();
+ }
+ 
++int WindowEffects::saturation() const
++{
++    return kwinConfig()->group(BlurGroup).readEntry("Saturation", DefaultSaturation);
++}
++
++void WindowEffects::setSaturation(int percent)
++{
++    percent = std::clamp(percent, 50, 250);
++    if (percent == saturation())
++        return;
++
++    KConfigGroup group = kwinConfig()->group(BlurGroup);
++    group.writeEntry("Saturation", percent);
++    group.sync();
++    reconfigureEffect(BlurEffectId);
++    emit saturationChanged();
++}
++
+ QStringList WindowEffects::forcedClasses() const
+ {
+-    QStringList classes = kwinConfig()->group(QStringLiteral("Effect-blur")).readEntry("ForceBlurClasses", QStringList());
++    QStringList classes = kwinConfig()->group(BlurGroup).readEntry("ForceBlurClasses", QStringList());
+     classes.removeAll(QString());
+     return classes;
+ }
+@@ -132,7 +175,7 @@ void WindowEffects::removeForcedApp(const QString &windowClass)
+ 
+ void WindowEffects::setForcedClasses(const QStringList &classes)
+ {
+-    KConfigGroup blur = kwinConfig()->group(QStringLiteral("Effect-blur"));
++    KConfigGroup blur = kwinConfig()->group(BlurGroup);
+     blur.writeEntry("ForceBlurClasses", classes);
+     blur.sync();
+ 
+@@ -195,11 +238,7 @@ void WindowEffects::reconfigureKWin()
+     bus.asyncCall(QDBusMessage::createMethodCall(
+         QStringLiteral("org.kde.KWin"), QStringLiteral("/KWin"),
+         QStringLiteral("org.kde.KWin"), QStringLiteral("reconfigure")));
+-    QDBusMessage blur = QDBusMessage::createMethodCall(
+-        QStringLiteral("org.kde.KWin"), QStringLiteral("/Effects"),
+-        QStringLiteral("org.kde.kwin.Effects"), QStringLiteral("reconfigureEffect"));
+-    blur << QStringLiteral("blur");
+-    bus.asyncCall(blur);
++    reconfigureEffect(BlurEffectId);
+ }
+ 
+ void WindowEffects::reconfigureEffect(const QString &name)
+@@ -213,7 +252,7 @@ void WindowEffects::reconfigureEffect(const QString &name)
+ 
+ int WindowEffects::noiseStrength() const
+ {
+-    return kwinConfig()->group(QStringLiteral("Effect-blur")).readEntry("NoiseStrength", DefaultNoiseStrength);
++    return kwinConfig()->group(BlurGroup).readEntry("NoiseStrength", DefaultNoiseStrength);
+ }
+ 
+ void WindowEffects::setNoiseStrength(int strength)
+@@ -222,10 +261,10 @@ void WindowEffects::setNoiseStrength(int strength)
+     if (strength == noiseStrength())
+         return;
+ 
+-    KConfigGroup group = kwinConfig()->group(QStringLiteral("Effect-blur"));
++    KConfigGroup group = kwinConfig()->group(BlurGroup);
+     group.writeEntry("NoiseStrength", strength);
+     group.sync();
+-    reconfigureEffect(QStringLiteral("blur"));
++    reconfigureEffect(BlurEffectId);
+     emit noiseStrengthChanged();
+ }
+ 
+@@ -318,9 +357,10 @@ void WindowEffects::writeTranslucency(const char *key, int percent)
+ 
+ void WindowEffects::resetDefaults()
+ {
+-    KConfigGroup blur = kwinConfig()->group(QStringLiteral("Effect-blur"));
++    KConfigGroup blur = kwinConfig()->group(BlurGroup);
+     blur.writeEntry("BlurStrength", DefaultBlurStrength);
+     blur.writeEntry("NoiseStrength", DefaultNoiseStrength);
++    blur.writeEntry("Saturation", DefaultSaturation);
+     blur.sync();
+ 
+     KConfigGroup cutefish = kwinConfig()->group(QStringLiteral("Cutefish"));
+@@ -338,6 +378,7 @@ void WindowEffects::resetDefaults()
+     reconfigureEffect(QStringLiteral("translucency"));
+     emit blurStrengthChanged();
+     emit noiseStrengthChanged();
++    emit saturationChanged();
+     emit forcedOpacityChanged();
+     emit translucencyChanged();
+ }
+diff --git a/src/windoweffects.h b/src/windoweffects.h
+index 4b9be1d..d628d71 100644
+--- a/src/windoweffects.h
++++ b/src/windoweffects.h
+@@ -22,6 +22,8 @@ class WindowEffects : public QObject
+     Q_PROPERTY(QVariantList forcedApps READ forcedApps NOTIFY forcedAppsChanged)
+     Q_PROPERTY(QVariantList availableApps READ availableApps NOTIFY forcedAppsChanged)
+     Q_PROPERTY(int noiseStrength READ noiseStrength WRITE setNoiseStrength NOTIFY noiseStrengthChanged)
++    // Colour saturation of the blurred background, percent (100 = unchanged).
++    Q_PROPERTY(int saturation READ saturation WRITE setSaturation NOTIFY saturationChanged)
+     // Opacity (percent) of the apps in the always-blur list.
+     Q_PROPERTY(int forcedActiveOpacity READ forcedActiveOpacity WRITE setForcedActiveOpacity NOTIFY forcedOpacityChanged)
+     Q_PROPERTY(int forcedInactiveOpacity READ forcedInactiveOpacity WRITE setForcedInactiveOpacity NOTIFY forcedOpacityChanged)
+@@ -45,6 +47,9 @@ public:
+     int noiseStrength() const;
+     void setNoiseStrength(int strength);
+ 
++    int saturation() const;
++    void setSaturation(int percent);
++
+     int forcedActiveOpacity() const;
+     void setForcedActiveOpacity(int percent);
+     int forcedInactiveOpacity() const;
+@@ -70,6 +75,7 @@ signals:
+     void blurStrengthChanged();
+     void forcedAppsChanged();
+     void noiseStrengthChanged();
++    void saturationChanged();
+     void forcedOpacityChanged();
+     void translucencyChanged();
+     void separateSpacesChanged();
+-- 
+2.43.0
+

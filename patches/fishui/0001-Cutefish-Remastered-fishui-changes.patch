@@ -1,7 +1,7 @@
 From f631c0679c08c018d36abb1b4a812c02f1294d9e Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Fri, 25 Sep 2026 22:14:32 +0600
-Subject: [PATCH 1/5] Cutefish Remastered: fishui changes
+Subject: [PATCH 1/6] Cutefish Remastered: fishui changes
 
 - Blur and translucency behind every FishUI window by default (macOS vibrancy)
 ---

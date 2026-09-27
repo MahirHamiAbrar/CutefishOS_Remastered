@@ -1,0 +1,231 @@
+From 0be5ccb6ccaac99f017e3c2cc2cccbbb599a1a8c Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 20:50:05 +0600
+Subject: [PATCH 3/3] Notifications: per-app block list (desktop-entry hint or
+ app name), set over D-Bus by Settings; status bar avatar reloads
+
+---
+ debian/changelog                              |  6 ++++
+ .../com.cutefish.Notification.xml             |  6 ++++
+ src/notification/notificationmanager.cpp      | 12 +++++++
+ src/notification/notificationmanager.h        |  7 ++++
+ src/notification/notificationserver.cpp       |  8 +++--
+ src/notification/notificationsettings.cpp     | 35 +++++++++++++++++++
+ src/notification/notificationsettings.h       |  7 ++++
+ src/statusbar/qml/main.qml                    |  4 ++-
+ 8 files changed, 82 insertions(+), 3 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 4b378db..200b53b 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-shell (0.8+remastered4) resolute; urgency=medium
++
++  * Notifications: per-app block list (desktop-entry hint or app name), set over D-Bus by Settings; status bar avatar reloads
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 20:50:05 +0600
++
+ cutefish-shell (0.8+remastered3) resolute; urgency=medium
+ 
+   * Launcher opens on the display under the pointer
+diff --git a/src/notification/com.cutefish.Notification.xml b/src/notification/com.cutefish.Notification.xml
+index 0e9ce23..0b6ce5b 100644
+--- a/src/notification/com.cutefish.Notification.xml
++++ b/src/notification/com.cutefish.Notification.xml
+@@ -5,7 +5,13 @@
+     <method name="setDoNotDisturb">
+       <arg name="enabled" type="b" direction="in"/>
+     </method>
++    <method name="setAppBlocked">
++      <arg name="app" type="s" direction="in"/>
++      <arg name="blocked" type="b" direction="in"/>
++    </method>
+     <signal name="doNotDisturbChanged"></signal>
++    <signal name="blockedAppsChanged"></signal>
+     <property name="doNotDisturb" type="b" access="read"/>
++    <property name="blockedApps" type="as" access="read"/>
+   </interface>
+ </node>
+diff --git a/src/notification/notificationmanager.cpp b/src/notification/notificationmanager.cpp
+index 9cbc6b5..4420f55 100644
+--- a/src/notification/notificationmanager.cpp
++++ b/src/notification/notificationmanager.cpp
+@@ -50,6 +50,8 @@ NotificationManager::NotificationManager(QQmlEngine *engine, QObject *parent)
+ 
+     connect(m_settings, &NotificationSettings::doNotDisturbChanged,
+             this, &NotificationManager::doNotDisturbChanged);
++    connect(m_settings, &NotificationSettings::blockedAppsChanged,
++            this, &NotificationManager::blockedAppsChanged);
+ 
+     // The banners are windows of their own, spawned by an Instantiator; the
+     // object holding it is never shown.
+@@ -86,6 +88,16 @@ void NotificationManager::setDoNotDisturb(bool enabled)
+     m_settings->setDoNotDisturb(enabled);
+ }
+ 
++QStringList NotificationManager::blockedApps() const
++{
++    return m_settings->blockedApps();
++}
++
++void NotificationManager::setAppBlocked(const QString &app, bool blocked)
++{
++    m_settings->setAppBlocked(app, blocked);
++}
++
+ void NotificationManager::showWindow()
+ {
+     emit windowRequested();
+diff --git a/src/notification/notificationmanager.h b/src/notification/notificationmanager.h
+index 13a411e..4a7c291 100644
+--- a/src/notification/notificationmanager.h
++++ b/src/notification/notificationmanager.h
+@@ -42,6 +42,7 @@ class NotificationManager : public QObject
+ {
+     Q_OBJECT
+     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
++    Q_PROPERTY(QStringList blockedApps READ blockedApps NOTIFY blockedAppsChanged)
+ 
+ public:
+     explicit NotificationManager(QQmlEngine *engine, QObject *parent = nullptr);
+@@ -50,12 +51,18 @@ public:
+     bool doNotDisturb() const;
+     void setDoNotDisturb(bool enabled);
+ 
++    QStringList blockedApps() const;
++
+ public slots:
++    /** Settings > Notifications: stop or allow one app's notifications. */
++    void setAppBlocked(const QString &app, bool blocked);
++
+     /** D-Bus entry point, and what `cutefish-notificationd -s` used to do. */
+     void showWindow();
+ 
+ signals:
+     void doNotDisturbChanged();
++    void blockedAppsChanged();
+     /** Asks the status bar to toggle the notification centre. */
+     void windowRequested();
+ 
+diff --git a/src/notification/notificationserver.cpp b/src/notification/notificationserver.cpp
+index c0891e5..7502621 100644
+--- a/src/notification/notificationserver.cpp
++++ b/src/notification/notificationserver.cpp
+@@ -7,6 +7,7 @@
+ #include "notificationserver.h"
+ #include "dbus/notificationsadaptor.h"
+ #include "notificationutils.h"
++#include "notification/notificationsettings.h"
+ 
+ #include <QDebug>
+ 
+@@ -43,8 +44,6 @@ uint NotificationServer::Notify(const QString &app_name,
+                                 const QVariantMap &hints,
+                                 int timeout)
+ {
+-    Q_UNUSED(hints);
+-
+     uint id = 0;
+ 
+     const bool wasReplaced = replaces_id > 0;
+@@ -59,6 +58,11 @@ uint NotificationServer::Notify(const QString &app_name,
+         ++m_highestId;
+     }
+ 
++    // Settings > Notifications can block an app: drop it before it reaches
++    // the banners or the history.
++    if (NotificationSettings::self()->isBlocked(hints.value(QStringLiteral("desktop-entry")).toString(), app_name))
++        return id; // a valid id, so the sender sees no error
++
+     Notification notification;
+     notification.id = id;
+     notification.created = QDateTime::currentDateTimeUtc();
+diff --git a/src/notification/notificationsettings.cpp b/src/notification/notificationsettings.cpp
+index 4713166..9fa5c9f 100644
+--- a/src/notification/notificationsettings.cpp
++++ b/src/notification/notificationsettings.cpp
+@@ -30,6 +30,41 @@ NotificationSettings::NotificationSettings(QObject *parent)
+     , m_settings(QSettings::UserScope, "cutefishos", "notification")
+ {
+     m_doNotDisturb = m_settings.value("DoNotDisturb", false).toBool();
++    m_blockedApps = m_settings.value("Blocked").toStringList();
++}
++
++QStringList NotificationSettings::blockedApps() const
++{
++    return m_blockedApps;
++}
++
++void NotificationSettings::setAppBlocked(const QString &app, bool blocked)
++{
++    const QString key = app.trimmed().toLower();
++    if (key.isEmpty() || m_blockedApps.contains(key) == blocked)
++        return;
++
++    if (blocked)
++        m_blockedApps << key;
++    else
++        m_blockedApps.removeAll(key);
++
++    m_settings.setValue("Blocked", m_blockedApps);
++    emit blockedAppsChanged();
++}
++
++bool NotificationSettings::isBlocked(const QString &desktopEntry, const QString &appName) const
++{
++    if (m_blockedApps.isEmpty())
++        return false;
++
++    // The desktop-entry hint may carry the .desktop suffix.
++    QString entry = desktopEntry.toLower();
++    if (entry.endsWith(QLatin1String(".desktop")))
++        entry.chop(8);
++
++    return (!entry.isEmpty() && m_blockedApps.contains(entry))
++        || (!appName.isEmpty() && m_blockedApps.contains(appName.toLower()));
+ }
+ 
+ bool NotificationSettings::doNotDisturb() const
+diff --git a/src/notification/notificationsettings.h b/src/notification/notificationsettings.h
+index 887a317..5c6247b 100644
+--- a/src/notification/notificationsettings.h
++++ b/src/notification/notificationsettings.h
+@@ -36,12 +36,19 @@ public:
+     bool doNotDisturb() const;
+     void setDoNotDisturb(bool doNotDisturb);
+ 
++    //! Lower-case desktop ids or app names whose notifications are dropped.
++    QStringList blockedApps() const;
++    void setAppBlocked(const QString &app, bool blocked);
++    bool isBlocked(const QString &desktopEntry, const QString &appName) const;
++
+ signals:
+     void doNotDisturbChanged();
++    void blockedAppsChanged();
+ 
+ private:
+     QSettings m_settings;
+     bool m_doNotDisturb;
++    QStringList m_blockedApps;
+ };
+ 
+ #endif // NOTIFICATIONSETTINGS_H
+diff --git a/src/statusbar/qml/main.qml b/src/statusbar/qml/main.qml
+index 663ffc2..d01bc57 100644
+--- a/src/statusbar/qml/main.qml
++++ b/src/statusbar/qml/main.qml
+@@ -232,7 +232,9 @@ Item {
+                             : Qt.size(Math.round(width * FishUI.Dpi.ratio),
+                                       Math.round(height * FishUI.Dpi.ratio))
+ 
+-                source: currentUser.iconFileName ? "file:///" + currentUser.iconFileName : "image://icontheme/default-user"
++                source: currentUser.iconFileName ? "file://" + currentUser.iconFileName : "image://icontheme/default-user"
++                // AccountsService keeps the same path when the picture changes.
++                cache: false
+                 antialiasing: true
+                 smooth: true
+                 mipmap: true
+-- 
+2.43.0
+

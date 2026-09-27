@@ -1,0 +1,83 @@
+From 815323fc4bc15329d6c3f30fd8399251185504c6 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 20:50:05 +0600
+Subject: [PATCH 7/7] Power: save the chosen mode and apply it again at login;
+ no pkexec per CPU blocking the daemon; no off-by-one CPU
+
+---
+ cutefish-services/power/cpumanagement.cpp | 12 ++++++------
+ cutefish-services/power/powermanager.cpp  | 13 +++++++++++--
+ debian/changelog                          |  6 ++++++
+ 3 files changed, 23 insertions(+), 8 deletions(-)
+
+diff --git a/cutefish-services/power/cpumanagement.cpp b/cutefish-services/power/cpumanagement.cpp
+index f211032..262394e 100644
+--- a/cutefish-services/power/cpumanagement.cpp
++++ b/cutefish-services/power/cpumanagement.cpp
+@@ -59,12 +59,12 @@ void CPUManagement::setMode(int value)
+     if (modeString.isEmpty() || mode == m_currentMode)
+         return;
+ 
+-    QProcess process;
+-    for (int i = 0; i <= m_items.count(); ++i) {
+-        process.start("pkexec", QStringList() << "cutefish-cpufreq"
+-                                              << "-s" << "-c" << QString::number(i)
+-                                              << "-m" << modeString);
+-        process.waitForFinished(-1);
++    // Detached: this also runs at login (the saved mode is re-applied), and
++    // one pkexec per CPU would stall the services daemon.
++    for (int i = 0; i < m_items.count(); ++i) {
++        QProcess::startDetached("pkexec", QStringList() << "cutefish-cpufreq"
++                                                        << "-s" << "-c" << QString::number(i)
++                                                        << "-m" << modeString);
+     }
+ 
+     m_currentMode = mode;
+diff --git a/cutefish-services/power/powermanager.cpp b/cutefish-services/power/powermanager.cpp
+index fc731cb..7fab544 100644
+--- a/cutefish-services/power/powermanager.cpp
++++ b/cutefish-services/power/powermanager.cpp
+@@ -60,6 +60,11 @@ PowerManager::PowerManager(UPowerManager *upowerManager,
+ 
+     applyPolicy();
+ 
++    // The governor in sysfs goes back to the kernel default at every boot, so
++    // the mode chosen in Settings is saved and applied again here.
++    if (m_cpuManagement && m_settings.contains(QStringLiteral("Mode")))
++        m_cpuManagement->setMode(m_settings.value(QStringLiteral("Mode")).toInt());
++
+     if (m_upowerManager && m_upowerManager->lidIsClosed())
+         m_dimDisplayAction->handleLidClosed();
+ }
+@@ -71,8 +76,12 @@ int PowerManager::mode() const
+ 
+ void PowerManager::setMode(int mode)
+ {
+-    if (m_cpuManagement)
+-        m_cpuManagement->setMode(mode);
++    if (!m_cpuManagement)
++        return;
++
++    m_cpuManagement->setMode(mode);
++    m_settings.setValue(QStringLiteral("Mode"), mode);
++    m_settings.sync();
+ }
+ 
+ void PowerManager::loadSettings()
+diff --git a/debian/changelog b/debian/changelog
+index e9b9e41..8cb54ee 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-core (0.8+remastered7) resolute; urgency=medium
++
++  * Power: save the chosen mode and apply it again at login; no pkexec per CPU blocking the daemon; no off-by-one CPU
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 20:50:05 +0600
++
+ cutefish-core (0.8+remastered6) resolute; urgency=medium
+ 
+   * Session applies the formats locale from Settings; leaving a CJK language restores Inter
+-- 
+2.43.0
+
