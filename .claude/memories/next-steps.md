@@ -47,7 +47,7 @@ You are probably an agent started inside the installed or live Cutefish OS, on r
    - the netmonitor portal warning (`App info not found for 'cutefish-netmonitor'`: its desktop file isn't in `/usr/share/applications`);
    - QML binding warnings on the Hotspot page (noted in session 3, not investigated).
 6. Distribution: a PPA or apt repo so installed systems get updates (today they don't); CI for the build.
-7. Maintenance: when Ubuntu updates kwin 6.6.6 (security), rebase `patches/kwin`. Drop the per-output backport when KWin ≥ 6.7 lands.
+7. Maintenance: when Ubuntu updates kwin 6.6.6 (security), rebase `patches/kwin`. Drop the per-output backport when KWin ≥ 6.7 lands. Research on 2026-09-28: Ubuntu 26.10 ("stonking") has kwin 4:6.7.5; the Kubuntu backports PPA for 26.04 still has only 6.6.6. On 26.04, KWin 6.7.5 needs KF6 ≥ 6.26 (26.04 has 6.24), the Plasma 6.7 libraries (kdecoration, kwayland, knighttime, kscreenlocker, kglobalacceld, breeze, aurorae, libplasma), wayland-protocols ≥ 1.48 (26.04 has 1.47) and plasma-wayland-protocols ≥ 1.21, and it now requires Vulkan headers. Qt 6.10 is already enough. `cutefish-kwin-plugins` would need porting: 6.7 reworked the shader loader (the `*_core` shader variants are gone) and `effect.h`, and the blur effect changed.
 
 ## Housekeeping
 - Delete the merged branches `claude/serene-volta-p3dnpo` and `claude/loving-turing-i1erb6` (ask the user first).
