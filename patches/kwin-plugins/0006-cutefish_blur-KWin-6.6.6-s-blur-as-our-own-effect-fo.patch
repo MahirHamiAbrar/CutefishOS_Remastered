@@ -1,7 +1,7 @@
-From ff17f76639e4514bdb573b8c257158b14f2ecde1 Mon Sep 17 00:00:00 2001
+From c41afdf5022ed61aa82c5ed677d3722fd0153ca1 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 20:50:05 +0600
-Subject: [PATCH 6/6] cutefish_blur: KWin 6.6.6's blur as our own effect (force
+Subject: [PATCH 6/7] cutefish_blur: KWin 6.6.6's blur as our own effect (force
  blur classes, full strength for forced windows, five downsample levels,
  strength 1-20); KWin's blur disabled
 
@@ -9,14 +9,14 @@ Subject: [PATCH 6/6] cutefish_blur: KWin 6.6.6's blur as our own effect (force
  config/kwinrc                                 |   11 +-
  debian/changelog                              |    6 +
  plugins/CMakeLists.txt                        |    2 +
- plugins/blur/CMakeLists.txt                   |   57 +
- plugins/blur/blur.cpp                         | 1012 +++++++++++++++++
+ plugins/blur/CMakeLists.txt                   |   60 +
+ plugins/blur/blur.cpp                         | 1013 +++++++++++++++++
  plugins/blur/blur.h                           |  214 ++++
  plugins/blur/cutefishblur.kcfg                |   22 +
  plugins/blur/cutefishblur.qrc                 |   18 +
  plugins/blur/cutefishblurconfig.kcfgc         |    5 +
  plugins/blur/main.cpp                         |   20 +
- plugins/blur/metadata.json                    |   20 +
+ plugins/blur/metadata.json                    |   19 +
  plugins/blur/shaders/downsample.frag          |   16 +
  plugins/blur/shaders/downsample_core.frag     |   20 +
  plugins/blur/shaders/noise.frag               |   11 +
@@ -31,7 +31,7 @@ Subject: [PATCH 6/6] cutefish_blur: KWin 6.6.6's blur as our own effect (force
  plugins/blur/shaders/upsample_core.frag       |   23 +
  plugins/blur/shaders/vertex.vert              |   12 +
  plugins/blur/shaders/vertex_core.vert         |   14 +
- 25 files changed, 1655 insertions(+), 4 deletions(-)
+ 25 files changed, 1658 insertions(+), 4 deletions(-)
  create mode 100644 plugins/blur/CMakeLists.txt
  create mode 100644 plugins/blur/blur.cpp
  create mode 100644 plugins/blur/blur.h
@@ -111,10 +111,10 @@ index b6f6aa7..f9c7921 100644
  endif()
 diff --git a/plugins/blur/CMakeLists.txt b/plugins/blur/CMakeLists.txt
 new file mode 100644
-index 0000000..335e65c
+index 0000000..3d98265
 --- /dev/null
 +++ b/plugins/blur/CMakeLists.txt
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,60 @@
 +cmake_minimum_required(VERSION 3.16)
 +project(cutefish_blur LANGUAGES CXX)
 +
@@ -148,6 +148,9 @@ index 0000000..335e65c
 +add_library(cutefish_blur MODULE ${cutefish_blur_SOURCES})
 +
 +set_target_properties(cutefish_blur PROPERTIES PREFIX "")
++# A symbol missing at load time makes kwin_wayland abort, and with it the
++# login screen and the session: fail the link instead.
++target_link_options(cutefish_blur PRIVATE -Wl,--no-undefined)
 +
 +target_link_libraries(cutefish_blur
 +    PRIVATE
@@ -174,10 +177,10 @@ index 0000000..335e65c
 +    DESTINATION "${KDE_INSTALL_PLUGINDIR}/kwin/effects/plugins")
 diff --git a/plugins/blur/blur.cpp b/plugins/blur/blur.cpp
 new file mode 100644
-index 0000000..b004902
+index 0000000..fadf75a
 --- /dev/null
 +++ b/plugins/blur/blur.cpp
-@@ -0,0 +1,1012 @@
+@@ -0,0 +1,1013 @@
 +/*
 +    SPDX-FileCopyrightText: 2010 Fredrik Höglund <fredrik@kde.org>
 +    SPDX-FileCopyrightText: 2011 Philipp Knechtges <philipp-dev@knechtges.com>
@@ -225,12 +228,13 @@ index 0000000..b004902
 +
 +#include <KDecoration3/Decoration>
 +
-+Q_LOGGING_CATEGORY(KWIN_BLUR, "kwin_effect_blur", QtWarningMsg)
++Q_LOGGING_CATEGORY(CUTEFISH_BLUR, "kwin_effect_cutefish_blur", QtWarningMsg)
 +
 +static void ensureResources()
 +{
-+    // Must initialize resources manually because the effect is a static lib.
-+    Q_INIT_RESOURCE(blur);
++    // Named after cutefishblur.qrc. (KWin's copy says "blur": that symbol
++    // doesn't exist in this plugin and kwin_wayland aborted on load.)
++    Q_INIT_RESOURCE(cutefishblur);
 +}
 +
 +namespace KWin
@@ -281,7 +285,7 @@ index 0000000..b004902
 +                                                                              QStringLiteral(":/effects/cutefish_blur/shaders/vertex.vert"),
 +                                                                              QStringLiteral(":/effects/cutefish_blur/shaders/onscreen.frag"));
 +    if (!m_onscreenPass.shader) {
-+        qCWarning(KWIN_BLUR) << "Failed to load onscreen pass shader";
++        qCWarning(CUTEFISH_BLUR) << "Failed to load onscreen pass shader";
 +        return;
 +    } else {
 +        m_onscreenPass.mvpMatrixLocation = m_onscreenPass.shader->uniformLocation("modelViewProjectionMatrix");
@@ -294,7 +298,7 @@ index 0000000..b004902
 +                                                                                     QStringLiteral(":/effects/cutefish_blur/shaders/onscreen_rounded.vert"),
 +                                                                                     QStringLiteral(":/effects/cutefish_blur/shaders/onscreen_rounded.frag"));
 +    if (!m_roundedOnscreenPass.shader) {
-+        qCWarning(KWIN_BLUR) << "Failed to load onscreen pass shader";
++        qCWarning(CUTEFISH_BLUR) << "Failed to load onscreen pass shader";
 +        return;
 +    } else {
 +        m_roundedOnscreenPass.mvpMatrixLocation = m_roundedOnscreenPass.shader->uniformLocation("modelViewProjectionMatrix");
@@ -310,7 +314,7 @@ index 0000000..b004902
 +                                                                                QStringLiteral(":/effects/cutefish_blur/shaders/vertex.vert"),
 +                                                                                QStringLiteral(":/effects/cutefish_blur/shaders/downsample.frag"));
 +    if (!m_downsamplePass.shader) {
-+        qCWarning(KWIN_BLUR) << "Failed to load downsampling pass shader";
++        qCWarning(CUTEFISH_BLUR) << "Failed to load downsampling pass shader";
 +        return;
 +    } else {
 +        m_downsamplePass.mvpMatrixLocation = m_downsamplePass.shader->uniformLocation("modelViewProjectionMatrix");
@@ -322,7 +326,7 @@ index 0000000..b004902
 +                                                                              QStringLiteral(":/effects/cutefish_blur/shaders/vertex.vert"),
 +                                                                              QStringLiteral(":/effects/cutefish_blur/shaders/upsample.frag"));
 +    if (!m_upsamplePass.shader) {
-+        qCWarning(KWIN_BLUR) << "Failed to load upsampling pass shader";
++        qCWarning(CUTEFISH_BLUR) << "Failed to load upsampling pass shader";
 +        return;
 +    } else {
 +        m_upsamplePass.mvpMatrixLocation = m_upsamplePass.shader->uniformLocation("modelViewProjectionMatrix");
@@ -334,7 +338,7 @@ index 0000000..b004902
 +                                                                           QStringLiteral(":/effects/cutefish_blur/shaders/vertex.vert"),
 +                                                                           QStringLiteral(":/effects/cutefish_blur/shaders/noise.frag"));
 +    if (!m_noisePass.shader) {
-+        qCWarning(KWIN_BLUR) << "Failed to load noise pass shader";
++        qCWarning(CUTEFISH_BLUR) << "Failed to load noise pass shader";
 +        return;
 +    } else {
 +        m_noisePass.mvpMatrixLocation = m_noisePass.shader->uniformLocation("modelViewProjectionMatrix");
@@ -885,7 +889,7 @@ index 0000000..b004902
 +        for (size_t i = 0; i <= m_iterationCount; ++i) {
 +            auto texture = GLTexture::allocate(textureFormat, backgroundRect.size() / (1 << i));
 +            if (!texture) {
-+                qCWarning(KWIN_BLUR) << "Failed to allocate an offscreen texture";
++                qCWarning(CUTEFISH_BLUR) << "Failed to allocate an offscreen texture";
 +                return;
 +            }
 +            texture->setFilter(GL_LINEAR);
@@ -893,7 +897,7 @@ index 0000000..b004902
 +
 +            auto framebuffer = std::make_unique<GLFramebuffer>(texture.get());
 +            if (!framebuffer->valid()) {
-+                qCWarning(KWIN_BLUR) << "Failed to create an offscreen framebuffer";
++                qCWarning(CUTEFISH_BLUR) << "Failed to create an offscreen framebuffer";
 +                return;
 +            }
 +            EglContext::currentContext()->pushFramebuffer(framebuffer.get());
@@ -1008,7 +1012,7 @@ index 0000000..b004902
 +
 +        vbo->unmap();
 +    } else {
-+        qCWarning(KWIN_BLUR) << "Failed to map vertex buffer";
++        qCWarning(CUTEFISH_BLUR) << "Failed to map vertex buffer";
 +        return;
 +    }
 +
@@ -1501,10 +1505,10 @@ index 0000000..0da9360
 +#include "main.moc"
 diff --git a/plugins/blur/metadata.json b/plugins/blur/metadata.json
 new file mode 100644
-index 0000000..f3259c9
+index 0000000..93e2322
 --- /dev/null
 +++ b/plugins/blur/metadata.json
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,19 @@
 +{
 +    "KPlugin": {
 +        "Authors": [
@@ -1516,7 +1520,6 @@ index 0000000..f3259c9
 +        "Description": "Blurs the background behind translucent windows, with more strength and per-app force blur (Cutefish)",
 +        "EnabledByDefault": true,
 +        "Icon": "preferences-system-windows-effect-blur",
-+        "Id": "cutefish_blur",
 +        "License": "GPL",
 +        "Name": "Cutefish Blur",
 +        "Version": "1"

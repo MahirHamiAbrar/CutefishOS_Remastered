@@ -1,7 +1,7 @@
 From 815323fc4bc15329d6c3f30fd8399251185504c6 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 20:50:05 +0600
-Subject: [PATCH 7/7] Power: save the chosen mode and apply it again at login;
+Subject: [PATCH 7/8] Power: save the chosen mode and apply it again at login;
  no pkexec per CPU blocking the daemon; no off-by-one CPU
 
 ---

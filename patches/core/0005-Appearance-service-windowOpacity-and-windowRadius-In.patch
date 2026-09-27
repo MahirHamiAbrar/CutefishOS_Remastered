@@ -1,7 +1,7 @@
 From 4d3a6016dea07df3b00043416820fd175dbd7b95 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:08:35 +0600
-Subject: [PATCH 5/7] Appearance service: windowOpacity and windowRadius; Inter
+Subject: [PATCH 5/8] Appearance service: windowOpacity and windowRadius; Inter
  / JetBrains Mono as the default fonts
 
 ---

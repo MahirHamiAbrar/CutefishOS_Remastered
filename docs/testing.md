@@ -123,3 +123,23 @@ These ran in the Ubuntu 26.04 build container, not in a booted system. The VM ro
 | 15 | pass | Terminal first failed to load (§36) and Neovim drew garbage (§37); fixed and retested. Terminal's own Settings dialog needs a mouse click, not tested |
 | 16 | pass | Before the Calamares fork, the same install gave `LC_*=bn_BD` and a Bengali lock screen; now everything is `en_US.UTF-8` and the lock screen is English. The installer removes itself |
 
+## Session 7 (2026-09-27): Settings bug sweep, tested by clicking
+Live session of the session-6 ISO in VirtualBox (UEFI), with the new packages installed by `dpkg -i` (`kwin +cutefish3`, `cutefish-kwin-plugins` remastered7, `fishui` remastered7, `core` remastered7, `shell` remastered4, `settings` remastered9 plus hot-patched QML). The mouse is driven with `ydotool` (`build/vm/click.sh`, see workflow memory).
+
+| Area | Result | Notes |
+|---|---|---|
+| KWin + cutefish_blur | pass | `cutefish_blur` loaded, KWin's `blur` not loaded; SDDM and the session start (after the resource fix, §38) |
+| Blur strength | pass | 1 vs 20 clearly different live (screenshots `s1d`/`s20d`); written to `[Effect-cutefish_blur]` |
+| Blur switches | pass | blur on/off applies live; Translucency loads the effect, inactive opacity applies live; Reset restores defaults and unloads Translucency |
+| Always-blur apps | pass | Add (ark) writes `ForceBlurClasses` and the window rule; Remove clears both |
+| Background | pass | Picture grid and Color swatches lay out; rounded-rect tabs |
+| Mouse | pass | Layout correct. Only Adwaita cursors listed (cursor-theme path, known issue). Found the pointer-speed bug (§38) |
+| User | pass | Change picture (FileDialog, AccountsService `IconFile`), full name (AccountsService `RealName`); status-bar avatar follows |
+| Notifications | pass | Blocking Firefox drops `notify-send` with its desktop-entry hint and with app name "Firefox"; others shown; unblocking shows again |
+| Date & Time | pass after fix | Search "Dhaka" places the dot on Bangladesh; a click there picks Dhaka. Set failed on polkit (§38), fixed in settings remastered10 |
+| Region & Language | pass after fix | Small icon buttons; with `pkexec` installed, aa_DJ is generated, saved, and previewed; failure shows a message instead of hanging |
+| Battery | pass | Gradient health bar (VirtualBox battery: 100 %, Excellent) |
+| About | pass | System and Hardware sections; GPU "VMware SVGA II Adapter", model "innotek GmbH VirtualBox" |
+| Power | partial | Mode saved (`power.conf Mode=1`) and reported over D-Bus. VirtualBox has no cpufreq, so the governor itself can't be checked here |
+| Search, page switching | pass | Typing "blur" leaves Blur & Transparency; a cached page shows within 0.3 s |
+

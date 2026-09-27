@@ -1,7 +1,7 @@
 From 8b9061c3bea6ec8ff732d271833b9236fb71a45c Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 14:33:47 +0600
-Subject: [PATCH 5/6] Window: parentWindow (transient parent) for every window,
+Subject: [PATCH 5/7] Window: parentWindow (transient parent) for every window,
  not only ConfirmDialog; Terminal's settings dialog is a plain Window
 
 ---

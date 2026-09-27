@@ -1,7 +1,7 @@
 From 1b2aedb0461adc77fc842df92a6248eb0e57da64 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:15:53 +0600
-Subject: [PATCH 6/7] Session applies the formats locale from Settings; leaving
+Subject: [PATCH 6/8] Session applies the formats locale from Settings; leaving
  a CJK language restores Inter
 
 ---

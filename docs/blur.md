@@ -6,9 +6,10 @@ Blur is **on by default**. Everything about it is on its own Settings page, **Bl
 |---|---|---|
 | Blur behind windows, panels and menus | `~/.config/cutefishos/theme.conf` `BlurEnabled` (Appearance service) | on |
 | Window opacity (FishUI apps) | `theme.conf` `WindowOpacity`, 0.4–1.0 (Appearance service → `FishUI.Theme.windowOpacity`) | 0.70 (dark mode 0.04 lower) |
-| Blur strength | `kwinrc` `[Effect-blur] BlurStrength`, 1–15 | 15 |
-| Noise strength | `kwinrc` `[Effect-blur] NoiseStrength`, 0–14 | 0 |
-| Always blur these apps | `kwinrc` `[Effect-blur] ForceBlurClasses` + window rules | none |
+| Blur strength | `kwinrc` `[Effect-cutefish_blur] BlurStrength`, 1–20 (15 = KWin's own maximum) | 15 |
+| Noise strength | `kwinrc` `[Effect-cutefish_blur] NoiseStrength`, 0–14 | 0 |
+| Saturation | `kwinrc` `[Effect-cutefish_blur] Saturation`, 50–250 % | 150 % |
+| Always blur these apps | `kwinrc` `[Effect-cutefish_blur] ForceBlurClasses` + window rules | none |
 | Their opacity, active / inactive | `kwinrc` `[Cutefish] ForcedAppActiveOpacity` / `ForcedAppInactiveOpacity` → the window rules | 90 % / 85 % |
 | KWin Translucency effect (all windows) | `kwinrc` `[Plugins] translucencyEnabled`, `[Effect-translucency] Inactive`, `MoveResize` | off, 85 %, 80 % |
 | Reset to defaults | all of the above | |
@@ -27,19 +28,32 @@ Settings → Appearance → **Window corners** sets `theme.conf` `WindowRadius` 
 
 An app can opt out with `blurBehind: false` or by setting `background.opacity`. Terminal keeps its own opacity setting (85 % by default) and is now blurred behind it.
 
+## Our blur effect: `cutefish_blur` (since 2026-09-27)
+
+The blur is no longer a patch on KWin. `src/kwin-plugins/plugins/blur/` is KWin 6.6.6's blur effect built out of tree as a plugin (`cutefish_blur.so`, in `cutefish-kwin-plugins`), the same way as the rounded-corners effect. `config/kwinrc` disables KWin's own blur (`blurEnabled=false`) and enables ours (`cutefish_blurEnabled=true`). Classes, resources and the config group are renamed (`CutefishBlurEffect`, `CutefishBlurConfig`, `:/effects/cutefish_blur`, `[Effect-cutefish_blur]`), so nothing clashes with KWin's built-in copy.
+
+Our changes to the effect:
+- `ForceBlurClasses` (below);
+- force-blurred windows keep the full blur strength;
+- a fifth downsample level (KWin has it commented out), so strength runs 1–20 and 16–20 blur further than stock KWin.
+
+When a new KWin comes out, rebuild `kwin-plugins` against it (the effect uses KWin's internal API, like every effect). If the blur code changed upstream, copy `src/plugins/blur` again and reapply the renames and the three changes. KWin itself now carries only the per-output virtual desktop backport (`+cutefish3`).
+
+Settings carries `[Effect-blur]` values over to the new group once (`[Cutefish] BlurMigrated`).
+
 ## Per-app blur for any application
 
-Apps that never ask for blur (Firefox, LibreOffice, GTK apps…) can't be blurred from outside with stock KWin 6.6. The blur region comes only from the client, and `WindowForceBlurRole` only keeps an existing blur alive during full-screen effects (see setback 6). Since we already ship our own KWin build, the blur effect got one option:
+Apps that never ask for blur (Firefox, LibreOffice, GTK apps…) can't be blurred from outside with stock KWin 6.6. The blur region comes only from the client, and `WindowForceBlurRole` only keeps an existing blur alive during full-screen effects (see setback 6). Our blur effect has one option for it:
 
 ```ini
 # ~/.config/kwinrc
-[Effect-blur]
+[Effect-cutefish_blur]
 ForceBlurClasses=firefox,org.kde.kate
 ```
 
-A window whose resource name or class matches (case-insensitive) is blurred behind as a whole (`patches/kwin/cutefish-blur-0001-force-blur-classes.patch`). Its blur is drawn at full strength whatever the window's opacity; only open/close animations fade it (`cutefish-blur-0002`, see setbacks §23).
+A window whose resource name or class matches (case-insensitive) is blurred behind as a whole Its blur is drawn at full strength whatever the window's opacity; only open/close animations fade it (setbacks §23).
 
-Blur behind an opaque window is invisible, so Settings also writes a normal KWin window rule for each chosen app: `~/.config/kwinrulesrc`, rule id `cutefish-blur-<class>`, with the page's active and inactive opacity (90 % and 85 % by default). Your own window rules are left alone. After every change Settings calls `org.kde.KWin.reconfigure` and `reconfigureEffect("blur")`, so nothing needs a restart.
+Blur behind an opaque window is invisible, so Settings also writes a normal KWin window rule for each chosen app: `~/.config/kwinrulesrc`, rule id `cutefish-blur-<class>`, with the page's active and inactive opacity (90 % and 85 % by default). Your own window rules are left alone. After every change Settings calls `org.kde.KWin.reconfigure` and `reconfigureEffect("cutefish_blur")`, so nothing needs a restart.
 
 
 ## Files
@@ -49,8 +63,8 @@ Blur behind an opaque window is invisible, so Settings also writes a normal KWin
 - `src/settings/src/qml/Blur/Main.qml`: the Blur & Transparency page; `Appearance/Main.qml`: Window corners
 - `src/core/cutefish-services/appearance/thememanager.{h,cpp}`, `src/cutefish-framework/appearance/`, `src/fishui/src/thememanager.{h,cpp}`: `windowOpacity`, `windowRadius`
 - `src/kwin-plugins/plugins/{decoration,roundedwindow}`: follow `WindowRadius`
-- `src/kwin-ubuntu/src/plugins/blur/blur.{cpp,h,kcfg}`: `ForceBlurClasses`
-- `src/kwin-plugins/config/kwinrc`: `[Effect-blur]` defaults. The group name was wrong upstream (`Effect-Blur`), see setback 5.
+- `src/kwin-plugins/plugins/blur/`: the `cutefish_blur` effect
+- `src/kwin-plugins/config/kwinrc`: `[Effect-cutefish_blur]` defaults, KWin's blur off. (KConfig group names are case-sensitive, see setback 5.)
 
 ## Performance
 

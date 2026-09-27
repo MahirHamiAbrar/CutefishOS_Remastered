@@ -1,7 +1,7 @@
 From a8da616baa233f805f0b977f90a48cb0ee12023b Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 03:15:36 +0600
-Subject: [PATCH 5/6] Require KDecoration3: a missing one silently dropped the
+Subject: [PATCH 5/7] Require KDecoration3: a missing one silently dropped the
  decoration
 
 ---

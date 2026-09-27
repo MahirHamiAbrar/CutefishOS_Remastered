@@ -20,7 +20,7 @@ docs/                 all documentation; setbacks.md and testing.md are living l
 2. `source scripts/lib-commit.sh; commit_pkg <repo> "<message>"`. This bumps `+remasteredN` in `debian/changelog`, commits on top, and re-exports `patches/<repo>/`. `amend_pkg <repo>` folds a follow-up into the last commit.
 3. Commit `patches/<repo>` in the main repo. Header-only churn in older patch files is normal.
 
-KWin is different: commit in `src/kwin-ubuntu`, then `git format-patch -1` into both `patches/kwin/cutefish-…-000N-….patch` and `src/kwin-ubuntu/debian/patches/`. Append the file name to `debian/patches/series` and `.pc/applied-patches`, and bump the changelog `+cutefishN`. Also update the version and changelog line in `scripts/fetch.sh`. `fetch.sh` applies `patches/kwin/*.patch` in glob order (blur before per-output), so check that they apply from a pristine tree.
+KWin is different (and since session 7 it carries only the per-output backport; blur is `kwin-plugins/plugins/blur`): commit in `src/kwin-ubuntu`, then `git format-patch -1` into both `patches/kwin/cutefish-…-000N-….patch` and `src/kwin-ubuntu/debian/patches/`. Append the file name to `debian/patches/series` and `.pc/applied-patches`, and bump the changelog `+cutefishN`. Also update the version and changelog line in `scripts/fetch.sh`. `fetch.sh` applies `patches/kwin/*.patch` in glob order (blur before per-output), so check that they apply from a pristine tree.
 
 `netmonitor/` and `packaging/`: edit them directly and bump `debian/changelog` by hand. Meta is at 26.04.7; bump for any change that will be built.
 
@@ -31,6 +31,21 @@ KWin is different: commit in `src/kwin-ubuntu`, then `git format-patch -1` into 
 - Packages locally: `scripts/build-debs.sh <pkgs>` in Docker Desktop. It's slow, and KWin can OOM there.
 - ISO: `scripts/build-iso.sh` (privileged Docker, about 25 min) → `build/cutefish-os-26.04-amd64.iso`. **Stop VirtualBox VMs first.** The ISO takes the highest version of each package in `build/repo`.
 - Docker Desktop: `systemctl --user start|stop docker-desktop`; wait for `docker info`.
+
+## Trying changes (the user's standard since 2026-09-27)
+No ISO rebuild for each change. Boot the **live ISO** in `cutefish-efi` (detach the disk first: EFI otherwise boots the installed system), copy the new debs in with `VBoxManage guestcontrol cutefish-efi copyto --username cutefish --password "" <abs path> /tmp/debs/`, `sudo dpkg -i --force-confold /tmp/debs/*.deb`, then `sudo systemctl restart sddm` and press Enter at the greeter (the live user has no password; restart has no autologin).
+
+### A mouse for the agent (ydotool)
+- In the live session: `sudo apt-get install -y ydotool`, then `sudo setsid ydotoold --socket-path=/tmp/.ydotool_socket --socket-own=1000:1000 &`.
+- After every session start run `build/vm/pointer-setup.sh`: flat acceleration for the "ydotoold virtual device" (KWin D-Bus `InputDevice`), or moves are scaled.
+- `build/vm/click.sh X Y` clicks at display-0 pixels. It moves to the corner and then to X,Y as **separate** ydotool commands; `mousemove -a` sometimes got merged by libinput and landed elsewhere.
+- `build/vm/cursorpos.sh` prints KWin's cursor position; `build/vm/kwinq.sh 'JS'` evaluates a KWin-script expression (result via Space 2's name, restored).
+- `build/vm/settings.sh [page]` starts Settings through AppRuntime, inside the session. That matters for pkexec/polkit; `settings-log.sh` starts it from guest control with a log, and polkit calls fail there.
+- Wheel: `ydotool mousemove --wheel -x 0 -y -1` (repeat). Typing: `VBoxManage controlvm … keyboardputstring`.
+- Screenshots don't show the pointer; use `cursorpos.sh`.
+
+## Modal
+- Use `modal run --detach …`: a network drop cancelled a non-detached run mid-KWin. Modal can also preempt the container (it restarts the function; ~15 min lost). The build logs to the volume, so the console stays quiet while compiling; `modal container exec <id> -- tail /vol/out/logs/<pkg>.log` shows progress.
 
 ## Testing in VirtualBox (laptop only)
 - `scripts/vm.sh create|start|stop|destroy efi|bios`: VMs `cutefish-efi` and `cutefish-bios`, files in `build/vm/`. Two monitors, 3D, NAT, USB sticks with NTFS and exFAT.

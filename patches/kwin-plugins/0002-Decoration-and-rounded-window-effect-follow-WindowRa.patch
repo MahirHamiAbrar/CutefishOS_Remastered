@@ -1,7 +1,7 @@
 From adefca97ed06a4d0feccbe4acb5d0717643595d9 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:08:35 +0600
-Subject: [PATCH 2/6] Decoration and rounded-window effect follow WindowRadius
+Subject: [PATCH 2/7] Decoration and rounded-window effect follow WindowRadius
  from theme.conf
 
 ---

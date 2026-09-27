@@ -46,3 +46,12 @@
 - A `find_package(... QUIET)` that skips a component produces a package that installs fine and lacks the feature. Use REQUIRED, and add the key file to `must` in `build-in-container.sh`.
 - KWin's internal C++ API (effects) changes between releases: 6.6 folded `OpenGlContext` into `EglContext`. Rebuild kwin-plugins with every KWin bump.
 - In the VM, `pkill -f <pattern>` inside `guestcontrol run /bin/sh -c '…'` kills that shell too when the pattern is in its command line. Use `pkill -x <name>`; Firefox's process is `firefox-bin`.
+
+## Session 7
+- `pkexec` is its own package in 26.04 and wasn't installed; anything calling it failed silently. It is now a dependency of core and settings.
+- pkexec authorizes its **parent** process: never `QProcess::startDetached("pkexec", …)` ("Not authorized").
+- `org.freedesktop.timedate1` (and other polkit-guarded D-Bus calls): set `setInteractiveAuthorizationAllowed(true)` on the interface, or polkit refuses without asking.
+- A KWin effect plugin with an undefined symbol aborts `kwin_wayland` on load, which loops SDDM and leaves no desktop. Link with `-Wl,--no-undefined`. To recover in the VM: move the .so away and restart sddm.
+- FishUI QML controls sized 0 still paint (Switch had `implicitHeight` 0); they only take clicks where a layout stretches them.
+- QML: a GridView height of `count / (width / itemWidth)` divides by 0 before layout and breaks the whole page.
+- Slider `onValueChanged` fires for the initial value; write settings in `onMoved`.

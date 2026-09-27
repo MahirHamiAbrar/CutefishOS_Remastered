@@ -1,7 +1,7 @@
 From f337371279f4de379ec550b127e15bd8af3c46e8 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 14:38:36 +0600
-Subject: [PATCH 6/7] Default Applications page id was a copy of Date & Time's
+Subject: [PATCH 6/8] Default Applications page id was a copy of Date & Time's
  (-m datetime opened the wrong page); keyboard layout picker skips xkb's
  'custom' placeholder
 

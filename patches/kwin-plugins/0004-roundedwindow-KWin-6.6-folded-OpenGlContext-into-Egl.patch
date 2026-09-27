@@ -1,7 +1,7 @@
 From 400811ab4ef1b234230c72156cbc5ec0af7e8c3f Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:56:24 +0600
-Subject: [PATCH 4/6] roundedwindow: KWin 6.6 folded OpenGlContext into
+Subject: [PATCH 4/7] roundedwindow: KWin 6.6 folded OpenGlContext into
  EglContext
 
 ---

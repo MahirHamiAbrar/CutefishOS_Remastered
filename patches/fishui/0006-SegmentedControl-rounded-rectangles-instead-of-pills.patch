@@ -1,7 +1,7 @@
 From e3d6297042a36b7e752120c3037ff990d493e2c5 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 20:50:05 +0600
-Subject: [PATCH 6/6] SegmentedControl: rounded rectangles instead of pills;
+Subject: [PATCH 6/7] SegmentedControl: rounded rectangles instead of pills;
  the selected tab slides
 
 ---

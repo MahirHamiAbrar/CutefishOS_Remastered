@@ -82,3 +82,10 @@ The project started on 2026-09-25; everything below happened on 2026-09-25/26. S
 - Wrote developer guides for all 21 repositories (`docs/dev/`) and an API generator.
 
 - 2026-09-27 (session 6, later): ISO builds failed on network drops (apt retries added), then on the fork pin (`Package: *` can't take a version pin, §35). The user asked to save mobile data, so build-iso.sh caches the apt downloads and the seeded skel. The skel seed needed libc6-dev, relative symlinks and an explicit treesitter install. The live session exposed Terminal still not starting (§36) and Neovim garbage in it (§37: DCS/APC strings, FBO rendering); fixed in fishui 5 and terminal 4. The Settings Default Applications page id was a duplicate of Date & Time's.
+
+## Session 7 (local, 2026-09-27): Settings bug sweep, blur as a plugin, mouse-driven tests
+- The user listed Settings bugs in `todo-next.md` (Bugs). All fixed; see §38 and `docs/testing.md` "Session 7".
+- **User decision:** our KWin changes should be modular. Blur moved out of KWin into our own effect `cutefish_blur` (`src/kwin-plugins/plugins/blur`, strength 1–20); KWin is `+cutefish3` with only the per-output backport. Per-app notifications list **all installed apps**.
+- **User decision:** from now on, changes are tested by booting the live ISO in the VM and `dpkg -i`-ing the new debs (no ISO rebuild). Later, every `src/<repo>` becomes its own repo in a private GitHub org, and installed systems update from there.
+- New test harness: `ydotool` in the live session gives the agent a mouse (`build/vm/click.sh` etc.; workflow.md).
+- Incidents: Modal disconnected the client mid-KWin (use `--detach`), then preempted the container once. The first `cutefish_blur` build aborted `kwin_wayland` (undefined resource symbol), which looped SDDM. `pkexec` turned out not to be installed at all.

@@ -1,7 +1,7 @@
 From cc206af72cb11a7ab9d752d4e8400633a59ac2c7 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:08:35 +0600
-Subject: [PATCH 4/7] Blur & Transparency page; Window corners; manual date and
+Subject: [PATCH 4/8] Blur & Transparency page; Window corners; manual date and
  time; time zone search; lighter sidebar tint
 
 ---

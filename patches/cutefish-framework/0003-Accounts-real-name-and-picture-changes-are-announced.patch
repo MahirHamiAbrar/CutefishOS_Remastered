@@ -1,0 +1,69 @@
+From e4509e5157f1beb63f3baaef03c3aa63f6ef9a00 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 23:39:18 +0600
+Subject: [PATCH 3/3] Accounts: real name and picture changes are announced
+ when AccountsService reports them (the UI kept the old name; a new picture at
+ the same path never reloaded)
+
+---
+ accounts/useraccount.cpp | 13 +++++++------
+ debian/changelog         |  6 ++++++
+ 2 files changed, 13 insertions(+), 6 deletions(-)
+
+diff --git a/accounts/useraccount.cpp b/accounts/useraccount.cpp
+index 6f5d0c0..a2c732c 100644
+--- a/accounts/useraccount.cpp
++++ b/accounts/useraccount.cpp
+@@ -379,10 +379,10 @@ void UserAccount::setRealName(const QString &realName)
+     if (this->realName() == realName)
+         return;
+ 
+-    d->realName = realName;
++    // AccountsService applies this asynchronously and then sends Changed;
++    // handleAccountChanged() emits realNameChanged once it has. (Storing the
++    // new name here made that check see no change, so the UI kept the old one.)
+     d->user->SetRealName(realName);
+-    Q_EMIT realNameChanged();
+-    Q_EMIT displayNameChanged();
+ }
+ 
+ /*!
+@@ -467,9 +467,8 @@ void UserAccount::setIconFileName(const QString &fileName)
+     if (iconFileName() == fileName)
+         return;
+ 
+-    d->iconFileName = fileName;
++    // As for the real name: handleAccountChanged() emits the change.
+     d->user->SetIconFile(fileName);
+-    Q_EMIT iconFileNameChanged();
+ }
+ 
+ /*!
+@@ -650,7 +649,9 @@ void UserAccount::handleAccountChanged()
+         Q_EMIT shellChanged();
+     }
+ 
+-    if (d->iconFileName != iconFileName()) {
++    // The picture keeps its path (AccountsService copies it to
++    // icons/<user>), so a new picture must be announced even then.
++    {
+         d->iconFileName = iconFileName();
+         Q_EMIT iconFileNameChanged();
+     }
+diff --git a/debian/changelog b/debian/changelog
+index 3e105bc..2682c63 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++libcutefish (0.7+remastered3) resolute; urgency=medium
++
++  * Accounts: real name and picture changes are announced when AccountsService reports them (the UI kept the old name; a new picture at the same path never reloaded)
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 23:39:18 +0600
++
+ libcutefish (0.7+remastered2) resolute; urgency=medium
+ 
+   * Appearance: windowOpacity and windowRadius
+-- 
+2.43.0
+

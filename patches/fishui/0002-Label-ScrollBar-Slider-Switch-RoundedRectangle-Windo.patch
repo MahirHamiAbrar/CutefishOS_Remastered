@@ -1,7 +1,7 @@
 From 8b8b7f77ab18c248e0892bf79758b7f314cd2876 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 01:39:30 +0600
-Subject: [PATCH 2/6] Label, ScrollBar, Slider, Switch, RoundedRectangle;
+Subject: [PATCH 2/7] Label, ScrollBar, Slider, Switch, RoundedRectangle;
  Window.blurEnabled/headerDarkMode; RoundImageButton.iconName/iconColor;
  ConfirmDialog.parentWindow/showOnCompleted/open() for Terminal
 

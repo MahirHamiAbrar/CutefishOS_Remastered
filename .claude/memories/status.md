@@ -1,4 +1,22 @@
-# Status (2026-09-27, session 6)
+# Status (2026-09-27, session 7)
+
+`main` has the session-7 commits on GitHub. `.gitignore` and `todo-next.md` have uncommitted changes that are the user's; leave them.
+
+## Session 7: Settings bug sweep (todo-next.md "Bugs"), tested by clicking in the live ISO
+| Package | Version | What's new |
+|---|---|---|
+| kwin | 4:6.6.6-0ubuntu0.1+cutefish3 | blur patches dropped; only the per-output backport |
+| cutefish-kwin-plugins | 0.8+remastered7 | `cutefish_blur` effect (KWin's blur + force classes + 5th level, strength 1–20); KWin's blur disabled in `/etc/xdg/kwinrc` |
+| fishui | 0.8+remastered7 | rounded-rect SegmentedControl; Switch has a real height (clicks landed only on stretched switches) |
+| cutefish-settings | 0.8+remastered10 | Background/Mouse/User layouts, per-app notifications, time zone (letterbox, nearest city, polkit flag), formats (no hang), layout icon buttons, battery health bar, About sections, sidebar search, cached animated pages, blur saturation; depends on pkexec |
+| cutefish-core | 0.8+remastered8 | power mode saved and re-applied at login; pkexec attached and async; depends on pkexec |
+| cutefish-shell | 0.8+remastered4 | per-app notification block list (D-Bus `setAppBlocked`, `notification.conf Blocked=`) |
+| libcutefish (cutefish-framework) | 0.7+remastered3 | Accounts: name/picture changes announced after AccountsService applies them |
+
+Verified in the live session (see `docs/testing.md`, Session 7): everything in the table there. Settings 10, core 8 and framework 3 were built after the tests that found their bugs; they need one more install-and-check round (next-steps.md).
+Not verifiable in VirtualBox: the CPU governor itself (no cpufreq).
+
+# Earlier status (2026-09-27, session 6)
 
 `main` is at `bf4ee0f` or later on GitHub. `.gitignore` has an uncommitted change that isn't ours; leave it.
 

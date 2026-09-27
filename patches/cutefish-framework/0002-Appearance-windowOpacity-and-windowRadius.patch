@@ -1,7 +1,7 @@
 From 59a9d8e7814c76372e38285257fdf21917508a4e Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:08:35 +0600
-Subject: [PATCH 2/2] Appearance: windowOpacity and windowRadius
+Subject: [PATCH 2/3] Appearance: windowOpacity and windowRadius
 
 ---
  appearance/appearance.cpp | 26 ++++++++++++++++++++++++++

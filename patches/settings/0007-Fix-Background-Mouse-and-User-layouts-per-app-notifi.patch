@@ -1,7 +1,7 @@
 From 466ecee5db90b86ba18c2a9c8fefb838848a6db9 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 20:50:05 +0600
-Subject: [PATCH 7/7] Fix Background, Mouse and User layouts; per-app
+Subject: [PATCH 7/8] Fix Background, Mouse and User layouts; per-app
  notifications; time zone picks the nearest city; formats never stuck; icon
  buttons for keyboard layouts; battery health bar; About sections; sidebar
  search; cached, animated pages; blur controls for cutefish_blur (strength

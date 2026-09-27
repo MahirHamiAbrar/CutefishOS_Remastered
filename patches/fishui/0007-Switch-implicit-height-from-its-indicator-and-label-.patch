@@ -1,0 +1,56 @@
+From e7d33101188a82ad0505e4cda5cd969b11dfa02e Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 21:54:35 +0600
+Subject: [PATCH 7/7] Switch: implicit height from its indicator and label; it
+ was 0, so clicks missed switches not stretched by their layout (Blur &
+ Transparency)
+
+---
+ debian/changelog    |  6 ++++++
+ src/Fish/Switch.qml | 12 ++++++++++--
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 5e22981..b6edcc4 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++fishui (0.8+remastered7) resolute; urgency=medium
++
++  * Switch: implicit height from its indicator and label; it was 0, so clicks missed switches not stretched by their layout (Blur & Transparency)
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 21:54:35 +0600
++
+ fishui (0.8+remastered6) resolute; urgency=medium
+ 
+   * SegmentedControl: rounded rectangles instead of pills; the selected tab slides
+diff --git a/src/Fish/Switch.qml b/src/Fish/Switch.qml
+index 0560c24..727c14f 100644
+--- a/src/Fish/Switch.qml
++++ b/src/Fish/Switch.qml
+@@ -6,12 +6,20 @@ T.Switch {
+     id: control
+ 
+     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
+-                            implicitContentWidth + leftPadding + rightPadding)
+-    implicitHeight: implicitBackgroundHeight + topInset + bottomInset
++                            implicitContentWidth + leftPadding + rightPadding,
++                            implicitIndicatorWidth + leftPadding + rightPadding)
++    // There is no background, so the height has to come from the indicator
++    // and the label. It used to be 0: the switch was drawn, but a click on it
++    // missed unless the layout stretched it (Layout.fillHeight).
++    implicitHeight: Math.max(implicitBackgroundHeight + topInset + bottomInset,
++                             implicitContentHeight + topPadding + bottomPadding,
++                             implicitIndicatorHeight + topPadding + bottomPadding)
+ 
+     opacity: control.enabled ? 1.0 : 0.5
+ 
+     padding: 8
++    topPadding: 0
++    bottomPadding: 0
+     spacing: 8
+ 
+     indicator: SwitchIndicator {
+-- 
+2.43.0
+

@@ -1,6 +1,13 @@
 # Next steps (priority order)
 
-## Immediately next (session 6 left off here)
+## Immediately next (session 7 left off here)
+1. Install settings remastered10, core remastered8, libcutefish remastered3 in the live VM (if not done at the end of session 7) and recheck: time zone Set, formats combo snapping back, User name updating in place, Mouse pointer speed untouched by opening the page.
+2. Real hardware: check the power mode actually changes and persists the CPU governor (VirtualBox has no cpufreq).
+3. Mouse page lists only Adwaita: the Cutefish cursor themes install to `/usr/share/themes` (known issue below, ask the user first).
+4. The rest of `todo-next.md` (features: Settings shortcuts, KDE-style settings, Terminal settings buttons, clipboard manager, native title bars…) is not started.
+5. Future (user's plan): publish every `src/<repo>` as its own repo in a private GitHub organization; installed systems then download updates from there. Nothing done yet.
+
+## Session 6 leftovers
 The session-6 ISO is built and verified, live and installed (`docs/testing.md` rows 15–16). The VM now boots `build/vm/cutefish-efi/disk2.vdi` (a fresh install; the old `disk.vdi` is kept, detached).
 1. Ask the user to open Terminal → right click → Settings (no mouse here).
 2. Decide with the user whether LazyVim should stop reaching the network on start (lazy `checker`, Mason), which makes OpenSnitch prompt.

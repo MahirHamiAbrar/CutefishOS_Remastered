@@ -1,7 +1,7 @@
 From 6640be0d4a1ea531211a4d8225660a759a69d450 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Fri, 25 Sep 2026 22:14:32 +0600
-Subject: [PATCH 1/7] Cutefish Remastered: settings changes
+Subject: [PATCH 1/8] Cutefish Remastered: settings changes
 
 - Drop the window blur now provided by FishUI.Window
 - Blur strength, per-app forced blur and separate Spaces per display

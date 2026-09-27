@@ -1,7 +1,7 @@
 From c8c969ce200bcac0d8875c7ed7adb21b16447a44 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sat, 26 Sep 2026 19:25:29 +0600
-Subject: [PATCH 4/7] Session: take the language from LANG before locale.gen,
+Subject: [PATCH 4/8] Session: take the language from LANG before locale.gen,
  keep the system's formats
 
 ---
