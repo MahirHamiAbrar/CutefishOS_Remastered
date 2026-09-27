@@ -1,19 +1,14 @@
 # Next steps (priority order)
 
 ## Immediately next (session 6 left off here)
-1. Build the ISO with the session-6 packages: stop the VM, start Docker, `scripts/build-iso.sh`. Then:
-   - check `build/logs/iso-skel.log` (oh-my-fish, LazyVim seeding);
-   - commit `build/lazy-lock.json` to `packaging/files/skel/nvim/lazy-lock.json`.
-2. Boot the ISO (EFI VM). Verify, in this order:
-   - Terminal opens, and its Settings dialog opens;
-   - sidebars look frosted; the transparency slider and window corners work live;
-   - the Blur & Transparency, Region & Language and Date & Time pages load with no QML warnings;
-   - `fc-match sans-serif` is Inter and `fc-match monospace` is JetBrains Mono;
-   - fish with neolambda; LazyVim offline.
-3. Install with `build/vm/cal-drive.sh`. Check that the time zone doesn't change the language or formats, and that `/etc/default/locale` is `en_US.UTF-8`.
-4. Rerun the global-menu check with Calculator.
-5. Fix the cursor-theme install path (`src/cursor-themes/debian/install` → `/usr/share/icons/`), see `docs/dev/cursor-themes.md`. Ask the user first; it wasn't requested.
-6. Update `docs/testing.md` with the results.
+1. The ISO with fishui 5, settings 8 and terminal 4 (`build/logs/iso-build14.txt`). Stop Docker, reattach the VM disk (`VBoxManage storageattach cutefish-efi --storagectl SATA --port 0 --device 0 --type hdd --medium build/vm/cutefish-efi/disk.vdi`; it was detached so the ISO boots) and install with `build/vm/cal-drive.sh`. Check:
+   - picking a time zone leaves the language and formats alone;
+   - `/etc/default/locale` is `en_US.UTF-8`;
+   - the installed user's shell is fish, with oh-my-fish and LazyVim.
+2. Ask the user to open Terminal → right click → Settings (no mouse here).
+3. Decide with the user whether LazyVim should stop reaching the network on start (lazy `checker`, Mason), which makes OpenSnitch prompt.
+4. Fix the cursor-theme install path (`src/cursor-themes/debian/install` → `/usr/share/icons/`). Ask the user first.
+5. Update `docs/testing.md`.
 
 ## If you're running inside Cutefish OS (the user's next plan)
 You are probably an agent started inside the installed or live Cutefish OS, on real hardware or in a VM.

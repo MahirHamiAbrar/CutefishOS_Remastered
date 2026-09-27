@@ -81,3 +81,4 @@ The project started on 2026-09-25; everything below happened on 2026-09-25/26. S
 - Verified rounded corners live in the VM.
 - Wrote developer guides for all 21 repositories (`docs/dev/`) and an API generator.
 
+- 2026-09-27 (session 6, later): ISO builds failed on network drops (apt retries added), then on the fork pin (`Package: *` can't take a version pin, §35). The user asked to save mobile data, so build-iso.sh caches the apt downloads and the seeded skel. The skel seed needed libc6-dev, relative symlinks and an explicit treesitter install. The live session exposed Terminal still not starting (§36) and Neovim garbage in it (§37: DCS/APC strings, FBO rendering); fixed in fishui 5 and terminal 4. The Settings Default Applications page id was a duplicate of Date & Time's.
