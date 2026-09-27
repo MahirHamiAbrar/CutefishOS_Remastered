@@ -1,7 +1,7 @@
 From cb578575a2cc696e4e2e4c66cdb39dc02b816d44 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 14:50:00 +0600
-Subject: [PATCH 3/3] qmltermwidget: consume DCS/SOS/PM/APC string sequences
+Subject: [PATCH 3/4] qmltermwidget: consume DCS/SOS/PM/APC string sequences
  instead of printing their payload (Neovim's XTGETTCAP and snacks.nvim's
  graphics queries corrupted the screen)
 
