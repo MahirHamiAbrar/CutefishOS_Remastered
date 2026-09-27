@@ -52,9 +52,24 @@ else
     nvim --headless "+Lazy! sync" +qa
     [ -n "$lock_out" ] && cp "$home/.config/nvim/lazy-lock.json" "$lock_out"
 fi
-# Treesitter parsers and Mason tools are built/downloaded on first start;
-# give them one headless start here so most of them are already in place.
-timeout 600 nvim --headless "+sleep 240" +qa || echo "seed-skel: nvim warm-up timed out (parsers finish on first start)"
+# Treesitter parsers, so highlighting works offline. LazyVim installs its
+# ensure_installed list when nvim-treesitter loads, but that happens on
+# VeryLazy/file events, which a headless start never fires: load it by hand
+# and wait for every parser.
+cat > "$work/parsers.lua" <<'LUA'
+local want = LazyVim.opts("nvim-treesitter").ensure_installed
+local function missing()
+  local have = require("nvim-treesitter").get_installed()
+  return vim.tbl_filter(function(l) return not vim.list_contains(have, l) end, want)
+end
+vim.wait(840000, function() return #missing() == 0 end, 2000)
+if #missing() > 0 then
+  io.stderr:write("seed-skel: parsers not installed: " .. table.concat(missing(), " ") .. "\n")
+  vim.cmd("cquit 1")
+end
+LUA
+timeout 900 nvim --headless "+Lazy! load nvim-treesitter" "+luafile $work/parsers.lua" +qa
+ls "$home/.local/share/nvim/site/parser"
 
 # Mason's tools are wired up with absolute paths (symlinks into this home):
 # leave them to the first start, which needs network anyway for updates.
