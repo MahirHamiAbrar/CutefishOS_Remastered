@@ -1,7 +1,7 @@
 From 25c7bb7b3ec6408431d3148c1669e00a9214312b Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:08:35 +0600
-Subject: [PATCH 3/4] Theme.windowOpacity/windowRadius follow the Appearance
+Subject: [PATCH 3/5] Theme.windowOpacity/windowRadius follow the Appearance
  service; ConfirmDialog.parentWindow and Window.blurEnabled as plain
  properties
 

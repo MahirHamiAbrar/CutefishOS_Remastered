@@ -1,7 +1,7 @@
 From c59ddf3a786bfc88c8076774f568e265580d5bb9 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:35:10 +0600
-Subject: [PATCH 4/4] Window: unversioned imports, so Qt 6 Window properties
+Subject: [PATCH 4/5] Window: unversioned imports, so Qt 6 Window properties
  (transientParent) are visible
 
 ---

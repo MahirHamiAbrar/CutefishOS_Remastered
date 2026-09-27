@@ -1,7 +1,7 @@
 From f29ceb6147f319f896c62915f39e08432aeda088 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 01:39:36 +0600
-Subject: [PATCH 2/2] Default font: Fantasque Sans Mono
+Subject: [PATCH 2/3] Default font: Fantasque Sans Mono
 
 ---
  debian/changelog           | 6 ++++++

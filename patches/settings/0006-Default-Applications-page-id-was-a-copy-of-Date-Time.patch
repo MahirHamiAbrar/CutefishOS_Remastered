@@ -1,0 +1,60 @@
+From f337371279f4de379ec550b127e15bd8af3c46e8 Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 14:38:36 +0600
+Subject: [PATCH 6/6] Default Applications page id was a copy of Date & Time's
+ (-m datetime opened the wrong page); keyboard layout picker skips xkb's
+ 'custom' placeholder
+
+---
+ debian/changelog        | 6 ++++++
+ src/keyboardlayouts.cpp | 5 ++++-
+ src/qml/SideBar.qml     | 2 +-
+ 3 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 71ab62e..5ec2a5c 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cutefish-settings (0.8+remastered8) resolute; urgency=medium
++
++  * Default Applications page id was a copy of Date & Time's (-m datetime opened the wrong page); keyboard layout picker skips xkb's 'custom' placeholder
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 14:38:36 +0600
++
+ cutefish-settings (0.8+remastered7) resolute; urgency=medium
+ 
+   * Region & Language: display language, formats and keyboard layouts, independent of the time zone
+diff --git a/src/keyboardlayouts.cpp b/src/keyboardlayouts.cpp
+index e0d8ce7..10659b6 100644
+--- a/src/keyboardlayouts.cpp
++++ b/src/keyboardlayouts.cpp
+@@ -72,8 +72,11 @@ KeyboardLayouts::KeyboardLayouts(QObject *parent)
+     }
+ 
+     QList<QPair<QString, QString>> sorted;
++    // "custom" is xkb's placeholder for a hand-written symbols file; it would
++    // sort first ("A user-defined custom Layout") and preselect in the picker.
+     for (auto it = m_layoutNames.cbegin(); it != m_layoutNames.cend(); ++it)
+-        sorted.append({ it.value(), it.key() });
++        if (it.key() != QLatin1String("custom"))
++            sorted.append({ it.value(), it.key() });
+     std::sort(sorted.begin(), sorted.end());
+     for (const auto &item : sorted)
+         m_available.append(QVariantMap { { "layout", item.second }, { "name", item.first } });
+diff --git a/src/qml/SideBar.qml b/src/qml/SideBar.qml
+index ae4b47f..ec7d54c 100644
+--- a/src/qml/SideBar.qml
++++ b/src/qml/SideBar.qml
+@@ -226,7 +226,7 @@ Item {
+ 
+         ListElement {
+             title: qsTr("Default Applications")
+-            name: "datetime"
++            name: "defaultapps"
+             page: "qrc:/qml/DefaultApp/Main.qml"
+             iconSource: "defaultapps.svg"
+             iconColor: "#418CFF"
+-- 
+2.43.0
+

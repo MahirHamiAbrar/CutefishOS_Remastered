@@ -1,0 +1,69 @@
+From 8b9061c3bea6ec8ff732d271833b9236fb71a45c Mon Sep 17 00:00:00 2001
+From: remastered <remastered@localhost>
+Date: Sun, 27 Sep 2026 14:33:47 +0600
+Subject: [PATCH 5/5] Window: parentWindow (transient parent) for every window,
+ not only ConfirmDialog; Terminal's settings dialog is a plain Window
+
+---
+ debian/changelog               | 6 ++++++
+ src/controls/ConfirmDialog.qml | 3 ---
+ src/controls/Window.qml        | 9 +++++++++
+ 3 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 3276a25..1adff92 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++fishui (0.8+remastered5) resolute; urgency=medium
++
++  * Window: parentWindow (transient parent) for every window, not only ConfirmDialog; Terminal's settings dialog is a plain Window
++
++ -- Cutefish Remastered <remastered@localhost>  Sun, 27 Sep 2026 14:33:46 +0600
++
+ fishui (0.8+remastered4) resolute; urgency=medium
+ 
+   * Window: unversioned imports, so Qt 6 Window properties (transientParent) are visible
+diff --git a/src/controls/ConfirmDialog.qml b/src/controls/ConfirmDialog.qml
+index 8e80933..2d4c3db 100644
+--- a/src/controls/ConfirmDialog.qml
++++ b/src/controls/ConfirmDialog.qml
+@@ -11,15 +11,12 @@ FishUI.Window {
+     property string confirmText: qsTr("Confirm")
+     property bool destructive: false
+     property bool confirmEnabled: true
+-    //! The window this dialog belongs to (its transient parent).
+-    property var parentWindow: null
+     //! Show as soon as the dialog is created; false to show it with open().
+     property bool showOnCompleted: true
+ 
+     signal accepted()
+     signal rejected()
+ 
+-    transientParent: parentWindow
+     flags: Qt.Dialog | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+     modality: Qt.WindowModal
+     visible: false
+diff --git a/src/controls/Window.qml b/src/controls/Window.qml
+index 1f3bd82..e894443 100644
+--- a/src/controls/Window.qml
++++ b/src/controls/Window.qml
+@@ -33,6 +33,15 @@ Window {
+     flags: Qt.FramelessWindowHint
+     color: "transparent"
+ 
++    //! The window this one belongs to (its transient parent), for dialogs.
++    //! Unset, Qt's own choice (the window this one is declared in) stays.
++    property var parentWindow: null
++    Binding on transientParent {
++        when: control.parentWindow !== null
++        value: control.parentWindow
++        restoreMode: Binding.RestoreBindingOrValue
++    }
++
+     default property alias content : _content.data
+     property alias background: _background
+     property alias header: _header
+-- 
+2.43.0
+

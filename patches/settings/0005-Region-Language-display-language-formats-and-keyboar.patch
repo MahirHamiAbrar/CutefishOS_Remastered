@@ -1,7 +1,7 @@
 From b186a2f65ec31f71d7e0a9207166b022f0b7e268 Mon Sep 17 00:00:00 2001
 From: remastered <remastered@localhost>
 Date: Sun, 27 Sep 2026 02:15:53 +0600
-Subject: [PATCH 5/5] Region & Language: display language, formats and keyboard
+Subject: [PATCH 5/6] Region & Language: display language, formats and keyboard
  layouts, independent of the time zone
 
 ---
