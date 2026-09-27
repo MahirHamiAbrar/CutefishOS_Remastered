@@ -222,3 +222,16 @@ Found while testing the Network Monitor (it works: the prompt appears, connectio
 - **Cause:** The pin was `Package: *` with `Pin: version *+cutefish*`. apt rejects version pins on `Package: *` (`W: Did not understand pin type version`; the build's log filter hid that warning), and even for a named package a version glob starting with `*` never matches.
 - **Fix:** `Package: /^(lib)?(calamares|kwin)/` with `Pin: version /\+cutefish/`, checked with `apt-cache policy` and `apt-get -s install` in a container. The first version of the regex left out `libcalamares*`, and apt then couldn't satisfy `calamares (= …+cutefish1)`'s exact dependency on it. `mmdebstrap` now runs with `Acquire::Retries "10"`.
 - **Lesson:** Test an apt pin with `apt-cache policy` before relying on it. The check after the bootstrap caught the problem; without it the ISO would have shipped stock Calamares.
+
+## 36. Terminal still didn't start
+- **Symptom:** In the first ISO with the new FishUI, Terminal's process ran but no window appeared: `qrc:/qml/main.qml:115:13: Cannot assign to non-existent property "parentWindow"`.
+- **Cause:** Setback 32 added `parentWindow` to `ConfirmDialog` only. Terminal's own `SettingsDialog` is a plain `FishUI.Window` and sets it too. QML checks the whole file when it loads, so the lazily created dialog stopped the main window. Iterating on a copy of FishUI's QML through `QML_IMPORT_PATH` didn't work either: the plugin registers its types from its compiled-in resources (`qrc:/fishui/kit/…`), so the files on disk are never used.
+- **Fix:** `parentWindow` moved to `FishUI.Window` (fishui remastered5). It is applied through a `Binding` with `when`, so windows that don't set it keep Qt's automatic transient parent.
+- **Lesson:** Check the properties that an app's own components set, not only those it sets on FishUI types directly.
+
+## 37. Neovim drew garbage in Terminal
+- **Symptom:** With LazyVim, Terminal showed a stray "P", a light-blue block over the file, stale text, and later a whole screen of colour, which stayed after quitting Neovim.
+- **Cause:** The vendored Konsole emulator (`qmltermwidget/lib/Vt102Emulation.cpp`) only parsed OSC (`ESC ]`) strings. For DCS (`ESC P`), APC (`ESC _`), PM and SOS, it dropped the introducer and printed the payload as text. Neovim sends an XTGETTCAP DCS query at startup, and snacks.nvim sends an APC graphics query.
+- **Fix:** Those strings are now consumed up to BEL or ST and ignored (terminal remastered3). Only OSC still changes window attributes.
+- **Then:** That removed the stray "P", but even `nvim --clean` left stale text and colour blocks, plus a dashed diagonal line. The view painted into an OpenGL framebuffer object, and through Qt's OpenGL paint engine partial repaints didn't clear the transparent background. It was the same on llvmpipe, so it wasn't VirtualBox's GPU. The dashed diagonal is the seam between the two triangles of a filled rectangle. With the image render target, the library's documented fallback (painted on the CPU, as Konsole does), Neovim renders cleanly (terminal remastered4).
+- **Lesson:** Test a terminal with a full-screen TUI that probes the terminal, not only with a shell. To find out whether the GPU is to blame, rerun with `LIBGL_ALWAYS_SOFTWARE=1` before looking at drivers.
