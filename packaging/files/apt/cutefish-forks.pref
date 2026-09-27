@@ -2,6 +2,8 @@
 # packages plus our patches; as soon as Ubuntu publishes a newer revision
 # (0ubuntu26 > 0ubuntu25+cutefish1) apt would prefer it and our patches would
 # silently disappear from the ISO.
-Package: *
-Pin: version *+cutefish*
+# "Package: *" can't carry a version pin, and a version glob can't start
+# with "*" (apt ignores both), so name the fork's packages and use a regex.
+Package: /^(calamares|kwin|libkwin)/
+Pin: version /\+cutefish/
 Pin-Priority: 1001

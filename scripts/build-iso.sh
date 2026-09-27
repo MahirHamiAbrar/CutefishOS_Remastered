@@ -35,6 +35,7 @@ setup_hook='mkdir -p "$1/etc/apt/preferences.d" && cp /ws/packaging/files/apt/mo
 echo ">>> bootstrapping root filesystem"
 mmdebstrap --mode=root --variant=minbase \
     --aptopt='APT::Install-Recommends "false"' \
+    --aptopt='Acquire::Retries "10"' \
     --setup-hook="$setup_hook" \
     --include="ubuntu-minimal,systemd-sysv,sudo,locales,language-pack-en,ca-certificates,
 bash-completion,nano,less,initramfs-tools,plymouth,plymouth-label,casper,

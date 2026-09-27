@@ -14,7 +14,7 @@ Two build-configuration changes are made by `scripts/fetch.sh` in `debian/rules`
 
 Setback 34 explains why. `scripts/build-in-container.sh` also gives builds a system-only `PATH` and checks that the package contains `/usr/bin/calamares`.
 
-`calamares-settings-cutefish` depends on `calamares (>= 3.3.14-0ubuntu25+cutefish1)`. `scripts/build-iso.sh` pins `*+cutefish*` versions during the bootstrap and fails if the ISO's `calamares` isn't ours, so a newer Ubuntu revision can't silently replace it.
+`calamares-settings-cutefish` depends on `calamares (>= 3.3.14-0ubuntu25+cutefish1)`. `scripts/build-iso.sh` pins the `+cutefish` versions of the `calamares*`, `kwin*` and `libkwin*` packages during the bootstrap and fails if the ISO's `calamares` isn't ours, so a newer Ubuntu revision can't silently replace it.
 
 ## How the tree is made
 
